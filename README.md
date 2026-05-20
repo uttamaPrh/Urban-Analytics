@@ -28,20 +28,22 @@ A geospatial urban analytics platform for exploring country-level demographics, 
 ## 🔧 Installation
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/yourusername/urban-analytics.git
    cd urban-analytics
    ```
-
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
-
 3. **Download geographic data:**
+
    ```bash
    npx ts-node scripts/download-geodata.ts
    ```
+
    This downloads the countries GeoJSON file (~5MB)
 
 ---
@@ -49,18 +51,22 @@ A geospatial urban analytics platform for exploring country-level demographics, 
 ## 📌 Running the App
 
 ### Development
+
 ```bash
 npm run dev
 ```
+
 Open [http://localhost:5173](http://localhost:5173) in your browser
 
 ### Production Build
+
 ```bash
 npm run build
 npm run preview
 ```
 
 ### Type Checking
+
 ```bash
 npm run typecheck
 ```
@@ -75,6 +81,7 @@ npm run typecheck
 4. **Return** - Click "← Globe" to select a different country
 
 ### Tabs Available
+
 - **👥 Population** - Demographics from REST Countries & World Bank APIs
 - **🚨 Crime & Safety** - Crime incidents (UK only, last 3 months)
 
@@ -82,13 +89,13 @@ npm run typecheck
 
 ## 🌐 API Endpoints
 
-| API | Purpose | Free | Auth Required |
-|-----|---------|------|---|
-| [REST Countries](https://restcountries.com/v3.1) | Country data | ✅ Yes | ❌ No |
-| [World Bank](https://api.worldbank.org/v2) | Population & area indicators | ✅ Yes | ❌ No |
-| [UK Police API](https://data.police.uk/api) | Crime incidents | ✅ Yes | ❌ No |
-| [OpenStreetMap Overpass](https://overpass-api.de) | Road networks | ✅ Yes | ❌ No |
-| [Natural Earth](https://www.naturalearthdata.com/) | Country boundaries | ✅ Yes | ❌ No |
+| API                                             | Purpose                      | Free   | Auth Required |
+| ----------------------------------------------- | ---------------------------- | ------ | ------------- |
+| [REST Countries](https://restcountries.com/v3.1)   | Country data                 | ✅ Yes | ❌ No         |
+| [World Bank](https://api.worldbank.org/v2)         | Population & area indicators | ✅ Yes | ❌ No         |
+| [UK Police API](https://data.police.uk/api)        | Crime incidents              | ✅ Yes | ❌ No         |
+| [OpenStreetMap Overpass](https://overpass-api.de)  | Road networks                | ✅ Yes | ❌ No         |
+| [Natural Earth](https://www.naturalearthdata.com/) | Country boundaries           | ✅ Yes | ❌ No         |
 
 **Note:** All APIs are free and don't require authentication.
 
@@ -153,10 +160,13 @@ This project is open source and available under the MIT License.
 ## 🙋 Support & Contributing
 
 ### Reporting Issues
+
 If you encounter any bugs or issues, please create an issue on GitHub.
 
 ### Contributing
+
 Contributions are welcome! Feel free to:
+
 - Report bugs
 - Suggest features
 - Submit pull requests
@@ -166,12 +176,14 @@ Contributions are welcome! Feel free to:
 ## 🚀 Deployment
 
 ### Deploy to Vercel
+
 ```bash
 npm install -g vercel
 vercel
 ```
 
 ### Deploy to Netlify
+
 ```bash
 npm install -g netlify-cli
 netlify deploy --prod --dir=dist
@@ -186,8 +198,3 @@ netlify deploy --prod --dir=dist
 - [TailwindCSS Docs](https://tailwindcss.com/)
 - [Zustand Docs](https://github.com/pmndrs/zustand)
 - [React Query Docs](https://tanstack.com/query/latest)
-
----
-
-Made with ❤️ by Urban Analytics Team
-
