@@ -24,7 +24,11 @@ export interface CountryProperties {
   NAME: string
   NAME_LONG?: string
   ADM0_A3?: string
+  ISO_A2?: string
   ISO_A3?: string
+  LABEL_X?: number
+  LABEL_Y?: number
+  LABELRANK?: number
   [key: string]: unknown
 }
 
