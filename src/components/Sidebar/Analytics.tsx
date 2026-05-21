@@ -15,18 +15,20 @@ import {
 import { SelectedCountry, WorldBankSeries } from "@/types";
 import { usePopulationData } from "@/hooks/usePopulationData";
 import { useCrimeData } from "@/hooks/useCrimeData";
+import PredictionsTab from "@/components/Sidebar/PredictionsTab";
 
 interface AnalyticsProps {
   country: SelectedCountry;
 }
 
-type TabType = "overview" | "population" | "economy" | "crime";
+type TabType = "overview" | "population" | "economy" | "crime" | "predictions";
 
 const tabs: Array<{ id: TabType; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "population", label: "Population" },
   { id: "economy", label: "Economy" },
-  { id: "crime", label: "Crime & Safety" }
+  { id: "crime", label: "Crime & Safety" },
+  { id: "predictions", label: "Predictions" }
 ];
 
 const chartColors = {
@@ -451,6 +453,13 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
                   )}
                 </div>
               </section>
+            )}
+
+            {activeTab === "predictions" && (
+              <PredictionsTab
+                populationSeries={data.populationSeries}
+                gdpPerCapitaSeries={data.gdpPerCapitaSeries}
+              />
             )}
           </div>
         )}
