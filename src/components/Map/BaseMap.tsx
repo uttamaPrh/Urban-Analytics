@@ -21,10 +21,11 @@ export default function BaseMap({ bbox }: BaseMapProps): JSX.Element {
   const deckRef = useRef<Deck | null>(null)
   const setMapBBox = useAppStore((s) => s.setMapBBox)
   const activeTab = useAppStore((s) => s.activeTab)
+  const country = useAppStore((s) => s.selectedCountry)
   
   // Fetch data for each tab
   const trafficData = useTrafficData(bbox)
-  const crimeData = useCrimeData(bbox, 3)
+  const crimeData = useCrimeData(bbox, 3, country?.code)
   const aqiData = useAQIData(bbox)
   const countriesGeoJSON = useCountriesGeoJSON()
 
@@ -120,7 +121,7 @@ export default function BaseMap({ bbox }: BaseMapProps): JSX.Element {
       }))
       clusters = dbscan(trafficData.data.map(d => ({ lat: d.lat, lng: d.lng })), 0.5, 5)
     } else if (activeTab === 'crime' && crimeData.data) {
-      points = crimeData.data.map((d: any) => ({
+      points = crimeData.data.incidents.map((d) => ({
         position: [parseFloat(d.location.longitude), parseFloat(d.location.latitude)] as [number, number],
         id: d.id
       }))

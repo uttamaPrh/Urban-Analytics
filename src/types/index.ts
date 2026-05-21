@@ -63,7 +63,7 @@ export interface OverpassResponse {
   elements: OverpassElement[]
 }
 
-// UK Police API types
+// Crime and safety data types
 export interface PoliceCrimeItem {
   id: string
   category: string
@@ -80,6 +80,21 @@ export interface PoliceCrimeItem {
 export interface PoliceCategory {
   url: string
   name: string
+}
+
+export interface GlobalCrimeIndicator {
+  indicator: string
+  label: string
+  unit: string
+  latestYear: string | null
+  latestValue: number | null
+  series: Array<{ year: string; value: number }>
+}
+
+export interface CrimeDataBundle {
+  incidents: PoliceCrimeItem[]
+  indicators: GlobalCrimeIndicator[]
+  source: 'uk-police' | 'world-bank' | 'mixed'
 }
 
 // OpenAQ types

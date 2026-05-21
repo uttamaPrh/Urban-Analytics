@@ -20,6 +20,8 @@ export interface PopulationBundle {
   country: RestCountry | null
   populationSeries: WorldBankSeries | null
   areaSeries: WorldBankSeries | null
+  urbanPopulationSeries: WorldBankSeries | null
+  gdpPerCapitaSeries: WorldBankSeries | null
 }
 
 export function usePopulationData(code: string | undefined): DataHookResult<PopulationBundle> {
@@ -27,11 +29,36 @@ export function usePopulationData(code: string | undefined): DataHookResult<Popu
   const q = useQuery<PopulationBundle, Error>({
     queryKey: key,
     queryFn: async () => {
-      if (!code) return { country: null, populationSeries: null, areaSeries: null }
-      const country = await fetchRestCountry(code)
-      const populationSeries = await fetchWorldBank(code.toLowerCase(), 'SP.POP.TOTL')
-      const areaSeries = await fetchWorldBank(code.toLowerCase(), 'AG.SRF.TOTL.K2')
-      return { country, populationSeries, areaSeries }
+      if (!code) {
+        return {
+          country: null,
+          populationSeries: null,
+          areaSeries: null,
+          urbanPopulationSeries: null,
+          gdpPerCapitaSeries: null
+        }
+      }
+      const wbCode = code.toLowerCase()
+      const [
+        country,
+        populationSeries,
+        areaSeries,
+        urbanPopulationSeries,
+        gdpPerCapitaSeries
+      ] = await Promise.all([
+        fetchRestCountry(code),
+        fetchWorldBank(wbCode, 'SP.POP.TOTL'),
+        fetchWorldBank(wbCode, 'AG.SRF.TOTL.K2'),
+        fetchWorldBank(wbCode, 'SP.URB.TOTL.IN.ZS'),
+        fetchWorldBank(wbCode, 'NY.GDP.PCAP.CD')
+      ])
+      return {
+        country,
+        populationSeries,
+        areaSeries,
+        urbanPopulationSeries,
+        gdpPerCapitaSeries
+      }
     },
     enabled: !!code,
     staleTime: 1000 * 60 * 60,
