@@ -23,6 +23,7 @@ The project aims to:
 - Show population, area, density, capital, and regional information.
 - Show population and urbanization trends using charts.
 - Show economic indicators such as GDP per capita.
+- Forecast future population and GDP per capita using simple linear regression.
 - Show safety indicators globally using World Bank data.
 - Show sampled UK Police street incident data for Great Britain when available.
 - Present analytics in a clean, modern, dark-themed dashboard.
@@ -72,6 +73,7 @@ Dashboard tabs include:
 - Population
 - Economy
 - Crime and Safety
+- Predictions
 
 5.3 Population Analytics
 
@@ -132,6 +134,31 @@ The charts make the analytics easier to understand than plain text values.
 
 The interface uses a dark theme with styled cards, tabs, spacing, and chart panels. TailwindCSS is used for layout and styling.
 
+5.9 Predictions Analytics
+
+The Predictions tab forecasts:
+- Population growth for the next 5 years.
+- GDP per capita growth for the next 5 years.
+
+The prediction feature uses existing World Bank historical time-series data already fetched by the application. It does not use any paid API, backend service, or external machine learning service.
+
+The prediction logic is separated from the UI:
+- src/lib/prediction.ts contains the forecasting and evaluation functions.
+- src/types/prediction.ts contains TypeScript types for prediction data.
+- src/components/Sidebar/PredictionsTab.tsx contains the dashboard UI for charts, KPI cards, and model evaluation.
+
+The Predictions tab shows:
+- Latest actual population.
+- Predicted population in 5 years.
+- Latest actual GDP per capita.
+- Predicted GDP per capita in 5 years.
+- Five-year growth percentage.
+- MAE for model evaluation.
+- RMSE for model evaluation.
+- Number of years used for training.
+
+The prediction charts use Recharts and separate actual historical values from forecast values using different line styles.
+
 
 6. DATA SOURCES
 
@@ -145,6 +172,7 @@ World Bank API:
 - Used for land area.
 - Used for urban population percentage.
 - Used for GDP per capita.
+- Used for population and GDP per capita forecasting input data.
 - Used for global safety indicators such as homicide rate and business crime impact.
 
 UK Police API:
@@ -201,12 +229,14 @@ urban-analytics/
     - color scales
     - geographic utilities
     - Overpass query builder
+    - prediction utilities
 
   - store/
     Contains Zustand global app state.
 
   - types/
     Contains shared TypeScript types.
+    Contains prediction-specific TypeScript types.
 
 - public/
   - countries.geojson
@@ -276,23 +306,113 @@ The dashboard uses:
 - Line charts for urbanization trends.
 - Bar charts for population and business crime impact.
 - Visual indicator bars for latest safety values.
+- Forecast line charts for population and GDP per capita predictions.
 
 
-12. SECURITY AND PRIVACY
+12. PREDICTION MODEL AND FORMULAS
+
+The project uses simple linear regression for forecasting. This approach is suitable for the project because it is transparent, explainable, and easy to evaluate in an academic report.
+
+The prediction model uses:
+- x = year
+- y = indicator value
+
+The model fits the following equation:
+
+y = mx + b
+
+Where:
+- y is the predicted value.
+- x is the year.
+- m is the slope.
+- b is the intercept.
+
+The slope formula is:
+
+m = (n * sum(xy) - sum(x) * sum(y)) / (n * sum(x^2) - (sum(x))^2)
+
+The intercept formula is:
+
+b = (sum(y) - m * sum(x)) / n
+
+After the model is trained, future values are predicted using:
+
+predictedValue = m * futureYear + b
+
+The app forecasts 5 years after the latest available World Bank year. For example, if the latest available year is 2023, predictions are generated for 2024, 2025, 2026, 2027, and 2028.
+
+Negative forecast values are clamped to zero because population and GDP per capita should not be displayed as negative values in this dashboard.
+
+12.1 Data Cleaning Formula and Logic
+
+The cleanTimeSeriesData() function prepares World Bank data by:
+- Removing null values.
+- Removing invalid years.
+- Removing invalid numeric values.
+- Sorting the remaining values by year.
+
+The cleaned data points have this structure:
+
+{ year: number, value: number }
+
+12.2 Forecast Generation
+
+The generateForecast() function uses the trained regression model and the latest actual year:
+
+futureYear = latestYear + i
+
+Where i ranges from 1 to 5.
+
+Then:
+
+forecastValue = m * futureYear + b
+
+12.3 Growth Percentage Formula
+
+The five-year growth percentage is calculated as:
+
+growthPercentage = ((predictedValueInFiveYears - latestActualValue) / latestActualValue) * 100
+
+This formula is used for both population growth and GDP per capita growth.
+
+12.4 MAE Formula
+
+Mean Absolute Error measures the average absolute error between actual values and fitted model values:
+
+MAE = sum(abs(actualValue - predictedValue)) / n
+
+Lower MAE means the model predictions are closer to the historical values.
+
+12.5 RMSE Formula
+
+Root Mean Squared Error measures the square root of the average squared error:
+
+RMSE = sqrt(sum((actualValue - predictedValue)^2) / n)
+
+RMSE penalizes larger errors more strongly than MAE.
+
+12.6 Missing Data Handling
+
+The prediction feature safely handles missing or incomplete data. If fewer than two valid data points are available, the app does not train a model and shows an unavailable state instead of crashing.
+
+
+13. SECURITY AND PRIVACY
 
 The application does not require user accounts, passwords, or private API keys. All data is fetched from public APIs. No personal user data is stored by the application.
 
 
-13. LIMITATIONS
+14. LIMITATIONS
 
 - Some countries may not have complete World Bank safety or economic data.
+- Some countries may not have enough valid World Bank population or GDP data for forecasting.
+- Linear regression assumes a straight-line trend and cannot model sudden shocks or complex nonlinear changes.
 - UK Police local incident data is only available for Great Britain through the UK Police API.
 - Public APIs may rate limit, fail, or return incomplete data.
 - The application depends on internet access for live API data.
 - Large visualization libraries increase bundle size.
 
 
-14. TESTING AND VERIFICATION
+15. TESTING AND VERIFICATION
 
 The project includes the following verification commands:
 
@@ -308,7 +428,7 @@ Recent verification showed:
 - TailwindCSS compilation was fixed by adding the PostCSS configuration.
 
 
-15. INSTALLATION AND RUNNING
+16. INSTALLATION AND RUNNING
 
 Prerequisites:
 - Node.js version 18 or higher
@@ -336,7 +456,7 @@ Preview production build:
 npm run preview
 
 
-16. FUTURE IMPROVEMENTS
+17. FUTURE IMPROVEMENTS
 
 Possible future improvements include:
 
@@ -349,10 +469,12 @@ Possible future improvements include:
 - Add code splitting to reduce production bundle size.
 - Add automated UI tests.
 - Add comparison mode for two or more countries.
+- Add more advanced forecasting models such as polynomial regression, exponential smoothing, or ARIMA.
+- Add confidence intervals for forecast values.
 
 
-17. CONCLUSION
+18. CONCLUSION
 
-Urban Analytics Platform is a modern React and TypeScript application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, and country-specific dashboard sections.
+Urban Analytics Platform is a modern React and TypeScript application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, country-specific dashboard sections, and simple forecasting models.
 
-The project demonstrates frontend development, geospatial visualization, API integration, state management, data transformation, and chart-based analytics in a single application.
+The project demonstrates frontend development, geospatial visualization, API integration, state management, data transformation, chart-based analytics, and explainable prediction modelling in a single application.
