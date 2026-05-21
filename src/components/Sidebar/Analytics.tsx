@@ -212,10 +212,10 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
   const isLoading = populationData.isLoading || crimeData.isLoading;
 
   return (
-    <div className="min-h-screen bg-[#0a1020] px-5 py-6 text-white md:px-8">
+    <div className="min-h-screen bg-[#0a1020] px-5 pb-6 pt-20 text-white md:px-8">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex flex-col gap-4 border-b border-slate-800 pb-5 md:flex-row md:items-end md:justify-between">
-          <div>
+        <header className="mb-6 flex flex-col gap-5 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
             <div className="text-sm font-semibold uppercase tracking-wide text-cyan-300">
               Urban Analytics Dashboard
             </div>
@@ -224,7 +224,7 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
               Country-scale indicators, trends, and safety signals from global open data sources.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
