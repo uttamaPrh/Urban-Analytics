@@ -46,7 +46,13 @@ Prediction code is separated from UI code:
 - `src/types/prediction.ts`
 - `src/components/Sidebar/PredictionsTab.tsx`
 
-The forecast method is simple linear regression. It uses year as the independent variable `x` and indicator value as the dependent variable `y`.
+The forecast method now uses a small explainable model-selection pipeline that runs fully in TypeScript:
+
+1. Damped Holt log-trend model.
+2. Log-linear growth model.
+3. Centered linear regression fallback.
+
+The app tests candidate models on recent holdout years using RMSE, selects the best model, then retrains that model on all available historical data before generating the five-year forecast.
 
 ### Prediction Utility Functions
 
@@ -58,7 +64,38 @@ The project includes reusable TypeScript utility functions:
 - `calculateMAE()`
 - `calculateRMSE()`
 
-### Formula Used: Linear Regression
+### Formula Used: Damped Holt Log-Trend
+
+The primary model is a damped Holt trend model on log-transformed values. This is closer to the trend component used by forecasting systems such as Prophet, but remains lightweight enough to run in the browser.
+
+The observed value is transformed as:
+
+```text
+z(t) = ln(y(t))
+```
+
+The model updates a smoothed level and trend:
+
+```text
+level(t) = alpha * z(t) + (1 - alpha) * (level(t-1) + phi * trend(t-1))
+trend(t) = beta * (level(t) - level(t-1)) + (1 - beta) * phi * trend(t-1)
+```
+
+The forecast uses a damped future trend:
+
+```text
+z(t+h) = level(t) + (phi + phi^2 + ... + phi^h) * trend(t)
+y(t+h) = exp(z(t+h))
+```
+
+Where:
+
+- `alpha` controls how strongly the latest observation affects the level.
+- `beta` controls how quickly the trend changes.
+- `phi` damps the trend so forecasts do not explode unrealistically.
+- `h` is the forecast horizon in years.
+
+### Formula Used: Linear Regression Fallback
 
 The model fits a straight line:
 
@@ -85,7 +122,7 @@ The intercept is calculated as:
 b = (sum(y) - m * sum(x)) / n
 ```
 
-After the model is fitted, the app forecasts the next five years from the latest available World Bank year:
+When linear regression is selected, the app forecasts the next five years from the latest available World Bank year:
 
 ```text
 predictedValue = m * futureYear + b
@@ -121,6 +158,7 @@ RMSE = sqrt(sum((actualValue - predictedValue)^2) / n)
 
 The Predictions tab displays:
 
+- Selected model name.
 - MAE for population.
 - RMSE for population.
 - Training years used for population.
@@ -247,13 +285,14 @@ npm run typecheck
 - Prediction UI is isolated in `src/components/Sidebar/PredictionsTab.tsx`.
 - Existing population and GDP data fetching remains in `usePopulationData.ts`.
 - No paid APIs, private keys, or backend services are required.
-- The linear regression model is simple and explainable, making it suitable for academic reporting and dissertation discussion.
+- The damped Holt log-trend model is explainable and suitable for academic reporting because its level, trend, damping, MAE, and RMSE can be described directly.
 
 ---
 
 ## Limitations
 
-- Linear regression assumes a straight-line trend and cannot capture sudden economic shocks, policy changes, wars, pandemics, or nonlinear demographic transitions.
+- The browser model is still simpler than backend-trained Random Forest, XGBoost, Prophet, LSTM, or Transformer models.
+- The model cannot fully capture sudden economic shocks, policy changes, wars, pandemics, or nonlinear demographic transitions without extra explanatory variables.
 - Forecast quality depends on the completeness and reliability of World Bank historical data.
 - Some countries may have sparse GDP or safety data.
 - Public APIs may fail, rate limit, or return incomplete responses.

@@ -215,7 +215,13 @@ function MetricsPanel({
       <div className="text-sm font-semibold uppercase tracking-wide text-slate-300">
         {title}
       </div>
-      <dl className="mt-5 grid gap-4 text-sm md:grid-cols-3">
+      <dl className="mt-5 grid gap-4 text-sm md:grid-cols-4">
+        <div className="rounded-md bg-slate-950/70 p-4">
+          <dt className="text-slate-400">Model</dt>
+          <dd className="mt-2 text-lg font-bold text-white">
+            {result.model?.name ?? 'Unavailable'}
+          </dd>
+        </div>
         <div className="rounded-md bg-slate-950/70 p-4">
           <dt className="text-slate-400">MAE</dt>
           <dd className="mt-2 text-xl font-bold text-white">
@@ -235,6 +241,11 @@ function MetricsPanel({
           </dd>
         </div>
       </dl>
+      {result.metrics.holdoutYears > 0 && (
+        <div className="mt-4 text-sm text-slate-400">
+          Model selected by lowest RMSE on the most recent {result.metrics.holdoutYears} holdout years, then retrained on all available history.
+        </div>
+      )}
     </div>
   )
 }

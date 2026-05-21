@@ -23,7 +23,7 @@ The project aims to:
 - Show population, area, density, capital, and regional information.
 - Show population and urbanization trends using charts.
 - Show economic indicators such as GDP per capita.
-- Forecast future population and GDP per capita using simple linear regression.
+- Forecast future population and GDP per capita using an explainable time-series model selection approach.
 - Show safety indicators globally using World Bank data.
 - Show sampled UK Police street incident data for Great Britain when available.
 - Present analytics in a clean, modern, dark-themed dashboard.
@@ -311,13 +311,53 @@ The dashboard uses:
 
 12. PREDICTION MODEL AND FORMULAS
 
-The project uses simple linear regression for forecasting. This approach is suitable for the project because it is transparent, explainable, and easy to evaluate in an academic report.
+The project originally used simple linear regression, but that approach was too weak for nonlinear population and GDP per capita trends. The project now uses a lightweight browser-safe model selection approach.
 
-The prediction model uses:
+Candidate models:
+- Damped Holt log-trend model.
+- Log-linear growth model.
+- Centered linear regression fallback.
+
+The app tests candidate models against recent holdout years using RMSE. It then selects the best-performing model and retrains it on all available historical data before generating the next 5 forecast years.
+
+12.1 Primary Formula: Damped Holt Log-Trend
+
+The primary forecasting model transforms the original indicator value using a natural logarithm:
+
+z(t) = ln(y(t))
+
+Where:
+- y(t) is the original value at year t.
+- z(t) is the log-transformed value.
+
+The model then updates a smoothed level and trend:
+
+level(t) = alpha * z(t) + (1 - alpha) * (level(t-1) + phi * trend(t-1))
+
+trend(t) = beta * (level(t) - level(t-1)) + (1 - beta) * phi * trend(t-1)
+
+Where:
+- alpha controls how strongly the latest value affects the level.
+- beta controls how strongly the trend is updated.
+- phi is the damping parameter.
+
+The future log-value is forecast using:
+
+z(t+h) = level(t) + (phi + phi^2 + ... + phi^h) * trend(t)
+
+The forecast is converted back to the original scale:
+
+y(t+h) = exp(z(t+h))
+
+This model is better than plain linear regression for steadily changing GDP and population data because it models percentage-like growth and gradually damps future growth.
+
+12.2 Fallback Formula: Linear Regression
+
+The fallback model uses:
 - x = year
 - y = indicator value
 
-The model fits the following equation:
+It fits the following equation:
 
 y = mx + b
 
@@ -335,7 +375,7 @@ The intercept formula is:
 
 b = (sum(y) - m * sum(x)) / n
 
-After the model is trained, future values are predicted using:
+When this model is selected, future values are predicted using:
 
 predictedValue = m * futureYear + b
 
@@ -343,7 +383,7 @@ The app forecasts 5 years after the latest available World Bank year. For exampl
 
 Negative forecast values are clamped to zero because population and GDP per capita should not be displayed as negative values in this dashboard.
 
-12.1 Data Cleaning Formula and Logic
+12.3 Data Cleaning Formula and Logic
 
 The cleanTimeSeriesData() function prepares World Bank data by:
 - Removing null values.
@@ -355,7 +395,7 @@ The cleaned data points have this structure:
 
 { year: number, value: number }
 
-12.2 Forecast Generation
+12.4 Forecast Generation
 
 The generateForecast() function uses the trained regression model and the latest actual year:
 
@@ -365,9 +405,9 @@ Where i ranges from 1 to 5.
 
 Then:
 
-forecastValue = m * futureYear + b
+forecastValue = selectedModel.predict(futureYear)
 
-12.3 Growth Percentage Formula
+12.5 Growth Percentage Formula
 
 The five-year growth percentage is calculated as:
 
@@ -375,7 +415,7 @@ growthPercentage = ((predictedValueInFiveYears - latestActualValue) / latestActu
 
 This formula is used for both population growth and GDP per capita growth.
 
-12.4 MAE Formula
+12.6 MAE Formula
 
 Mean Absolute Error measures the average absolute error between actual values and fitted model values:
 
@@ -383,7 +423,7 @@ MAE = sum(abs(actualValue - predictedValue)) / n
 
 Lower MAE means the model predictions are closer to the historical values.
 
-12.5 RMSE Formula
+12.7 RMSE Formula
 
 Root Mean Squared Error measures the square root of the average squared error:
 
@@ -391,7 +431,15 @@ RMSE = sqrt(sum((actualValue - predictedValue)^2) / n)
 
 RMSE penalizes larger errors more strongly than MAE.
 
-12.6 Missing Data Handling
+12.8 Model Selection Formula
+
+Each candidate model is evaluated on recent holdout years. The selected model is:
+
+bestModel = model with minimum holdout RMSE
+
+This helps avoid a model that looks good across all old historical data but performs poorly on the most recent years.
+
+12.9 Missing Data Handling
 
 The prediction feature safely handles missing or incomplete data. If fewer than two valid data points are available, the app does not train a model and shows an unavailable state instead of crashing.
 
@@ -405,7 +453,8 @@ The application does not require user accounts, passwords, or private API keys. 
 
 - Some countries may not have complete World Bank safety or economic data.
 - Some countries may not have enough valid World Bank population or GDP data for forecasting.
-- Linear regression assumes a straight-line trend and cannot model sudden shocks or complex nonlinear changes.
+- The browser-based model is still simpler than backend-trained Random Forest, XGBoost, Prophet, LSTM, or Transformer models.
+- The model cannot fully capture sudden shocks, policy changes, wars, pandemics, or complex nonlinear demographic and economic changes without extra explanatory variables.
 - UK Police local incident data is only available for Great Britain through the UK Police API.
 - Public APIs may rate limit, fail, or return incomplete data.
 - The application depends on internet access for live API data.
@@ -469,7 +518,7 @@ Possible future improvements include:
 - Add code splitting to reduce production bundle size.
 - Add automated UI tests.
 - Add comparison mode for two or more countries.
-- Add more advanced forecasting models such as polynomial regression, exponential smoothing, or ARIMA.
+- Add backend-trained forecasting models such as Random Forest, XGBoost, Prophet, LSTM, Transformer models, or ARIMA.
 - Add confidence intervals for forecast values.
 
 
