@@ -1,0 +1,358 @@
+URBAN ANALYTICS PLATFORM - PROJECT REPORT
+
+1. PROJECT TITLE
+
+Urban Analytics Platform
+
+
+2. PROJECT OVERVIEW
+
+Urban Analytics Platform is a web-based geospatial analytics application that allows users to explore country-level urban indicators through an interactive globe and dashboard interface. The application lets a user select a country from a 3D globe and then view demographic, economic, urbanization, and safety-related analytics for that country.
+
+The platform is designed to combine public geographic data, country statistics, World Bank indicators, traffic and road data, air quality data, and crime or safety indicators into one interactive urban analytics experience.
+
+
+3. OBJECTIVE OF THE PROJECT
+
+The main objective of the project is to provide an interactive and visual analytics dashboard for understanding urban and country-level conditions across the world.
+
+The project aims to:
+
+- Display countries on an interactive 3D globe.
+- Allow users to select a country and view analytics.
+- Show population, area, density, capital, and regional information.
+- Show population and urbanization trends using charts.
+- Show economic indicators such as GDP per capita.
+- Show safety indicators globally using World Bank data.
+- Show sampled UK Police street incident data for Great Britain when available.
+- Present analytics in a clean, modern, dark-themed dashboard.
+- Use free public APIs without requiring user authentication.
+
+
+4. TECHNOLOGY STACK
+
+Frontend:
+- React 18
+- TypeScript
+- Vite
+- TailwindCSS
+
+State Management:
+- Zustand
+
+Data Fetching:
+- TanStack React Query
+
+Charts and Visualization:
+- Recharts
+- Globe.gl
+- MapLibre GL
+- Deck.gl
+
+Build and Tooling:
+- Node.js
+- npm
+- TypeScript compiler
+- PostCSS
+- Autoprefixer
+
+
+5. MAIN FEATURES
+
+5.1 Interactive 3D Globe
+
+The application starts with an interactive 3D globe. Users can rotate the globe and select countries. Once a country is selected, the application opens the analytics dashboard for that country.
+
+5.2 Country Analytics Dashboard
+
+After selecting a country, the dashboard displays a country-specific analytics view. The dashboard includes KPI cards, charts, and tab-based sections.
+
+Dashboard tabs include:
+- Overview
+- Population
+- Economy
+- Crime and Safety
+
+5.3 Population Analytics
+
+The platform shows population-related information such as:
+- Total population
+- Population trend
+- Area
+- Population density
+- Capital city
+- Region and subregion
+
+Population data is fetched from REST Countries and World Bank APIs.
+
+5.4 Urbanization Analytics
+
+The application includes urbanization analytics, including:
+- Urban population share
+- Urbanization trend over time
+
+This helps users understand how urbanized a selected country is.
+
+5.5 Economy Analytics
+
+The economy section includes GDP per capita analytics. It displays:
+- Latest GDP per capita value
+- Historical GDP per capita chart
+
+This gives basic economic context for the selected country.
+
+5.6 Crime and Safety Analytics
+
+The crime and safety section uses a global data approach.
+
+For most countries:
+- Safety indicators are fetched from the World Bank.
+- Indicators include intentional homicide rate and business losses from crime where available.
+- Charts are used to show safety trends.
+
+For Great Britain:
+- The app also fetches sampled UK Police street crime incidents when available.
+- Local incident categories are displayed when incident data exists.
+
+This design avoids limiting the entire crime feature to UK-only data.
+
+5.7 Charts and Visual Analytics
+
+The dashboard uses Recharts to display:
+- Population trend charts
+- Urbanization trend charts
+- GDP per capita charts
+- Global homicide rate charts
+- Business crime impact charts
+- Safety indicator bars
+
+The charts make the analytics easier to understand than plain text values.
+
+5.8 Responsive Dark-Themed UI
+
+The interface uses a dark theme with styled cards, tabs, spacing, and chart panels. TailwindCSS is used for layout and styling.
+
+
+6. DATA SOURCES
+
+The project uses free public data sources:
+
+REST Countries API:
+- Used for country profile data such as name, capital, region, area, and population.
+
+World Bank API:
+- Used for population time series.
+- Used for land area.
+- Used for urban population percentage.
+- Used for GDP per capita.
+- Used for global safety indicators such as homicide rate and business crime impact.
+
+UK Police API:
+- Used for local street crime incident data in Great Britain.
+
+OpenStreetMap Overpass API:
+- Used for road and traffic-related geospatial data.
+
+OpenAQ API:
+- Used for air quality location and measurement data.
+
+Natural Earth / countries.geojson:
+- Used for country boundaries and country selection.
+
+
+7. PROJECT STRUCTURE
+
+urban-analytics/
+
+- src/
+  - App.tsx
+    Main application component. Shows the globe when no country is selected and the analytics dashboard when a country is selected.
+
+  - main.tsx
+    React application entry point. Sets up React Query provider.
+
+  - styles.css
+    Global CSS and TailwindCSS entry file.
+
+  - components/
+    - Globe/
+      Contains the 3D globe interface.
+
+    - Map/
+      Contains map and layer rendering logic.
+
+    - Sidebar/
+      Contains analytics dashboard and tab components.
+
+    - UI/
+      Contains reusable UI components such as navbar, stat cards, loading skeletons, and error panels.
+
+  - hooks/
+    Contains custom React Query hooks for fetching data:
+    - usePopulationData.ts
+    - useCrimeData.ts
+    - useTrafficData.ts
+    - useAQIData.ts
+    - useCountriesGeoJSON.ts
+
+  - lib/
+    Contains helper utilities:
+    - clustering
+    - color scales
+    - geographic utilities
+    - Overpass query builder
+
+  - store/
+    Contains Zustand global app state.
+
+  - types/
+    Contains shared TypeScript types.
+
+- public/
+  - countries.geojson
+    Country boundary data used by the globe.
+
+- scripts/
+  - download-geodata.js
+  - download-geodata.ts
+    Scripts for downloading geographic data.
+
+- package.json
+  Project metadata, dependencies, and scripts.
+
+- vite.config.ts
+  Vite configuration.
+
+- tailwind.config.ts
+  TailwindCSS configuration.
+
+- postcss.config.cjs
+  PostCSS configuration used to compile TailwindCSS.
+
+
+8. APPLICATION WORKFLOW
+
+1. The user opens the application in the browser.
+2. The app displays the interactive 3D globe.
+3. The user selects a country.
+4. The selected country is saved in the Zustand store.
+5. The analytics dashboard opens for the selected country.
+6. React Query hooks fetch country-specific data from public APIs.
+7. The dashboard displays KPI cards, charts, and safety analytics.
+8. The user can switch between dashboard tabs.
+9. The user can return to the globe and select another country.
+
+
+9. STATE MANAGEMENT
+
+Zustand is used for global state management.
+
+The app stores:
+- Selected country
+- Active analytics tab
+- Current map bounding box
+
+This keeps country selection and dashboard state simple and centralized.
+
+
+10. DATA FETCHING APPROACH
+
+TanStack React Query is used for API data fetching. It provides:
+- Query caching
+- Loading states
+- Error states
+- Refetch support
+- Reduced duplicate API calls
+
+Each analytics area has its own hook. This keeps API logic separate from UI components.
+
+
+11. CHARTING APPROACH
+
+Recharts is used for dashboard charts. The application transforms API time series into chart-friendly arrays containing year and value fields.
+
+The dashboard uses:
+- Area charts for population and homicide trends.
+- Line charts for urbanization trends.
+- Bar charts for population and business crime impact.
+- Visual indicator bars for latest safety values.
+
+
+12. SECURITY AND PRIVACY
+
+The application does not require user accounts, passwords, or private API keys. All data is fetched from public APIs. No personal user data is stored by the application.
+
+
+13. LIMITATIONS
+
+- Some countries may not have complete World Bank safety or economic data.
+- UK Police local incident data is only available for Great Britain through the UK Police API.
+- Public APIs may rate limit, fail, or return incomplete data.
+- The application depends on internet access for live API data.
+- Large visualization libraries increase bundle size.
+
+
+14. TESTING AND VERIFICATION
+
+The project includes the following verification commands:
+
+- npm run typecheck
+  Runs TypeScript type checking.
+
+- npm run build
+  Creates a production build using Vite.
+
+Recent verification showed:
+- TypeScript type checking passed.
+- Production build passed.
+- TailwindCSS compilation was fixed by adding the PostCSS configuration.
+
+
+15. INSTALLATION AND RUNNING
+
+Prerequisites:
+- Node.js version 18 or higher
+- npm
+- Internet connection
+
+Install dependencies:
+
+npm install
+
+Run development server:
+
+npm run dev
+
+Open in browser:
+
+http://localhost:5173
+
+Build for production:
+
+npm run build
+
+Preview production build:
+
+npm run preview
+
+
+16. FUTURE IMPROVEMENTS
+
+Possible future improvements include:
+
+- Add more global crime and safety indicators.
+- Add city-level analytics where public data is available.
+- Add search functionality for countries.
+- Add loading skeletons inside each chart panel.
+- Add better error messages for unavailable API data.
+- Add export options for charts and country reports.
+- Add code splitting to reduce production bundle size.
+- Add automated UI tests.
+- Add comparison mode for two or more countries.
+
+
+17. CONCLUSION
+
+Urban Analytics Platform is a modern React and TypeScript application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, and country-specific dashboard sections.
+
+The project demonstrates frontend development, geospatial visualization, API integration, state management, data transformation, and chart-based analytics in a single application.
