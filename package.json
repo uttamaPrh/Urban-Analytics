@@ -4,7 +4,8 @@
   "private": true,
   "description": "Geospatial Urban Analytics Platform — Vite + React + TypeScript",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.js",
+    "frontend": "vite --host 127.0.0.1",
     "backend": "python -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8001",
     "build": "vite build",
     "preview": "vite preview",

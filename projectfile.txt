@@ -514,8 +514,14 @@ The project includes the following verification commands:
 - npm run build
   Creates a production build using Vite.
 
+- npm run dev
+  Starts both the FastAPI backend at http://127.0.0.1:8001 and the Vite frontend at http://127.0.0.1:5173.
+
 - npm run backend
-  Starts the FastAPI backend at http://127.0.0.1:8001.
+  Starts only the FastAPI backend at http://127.0.0.1:8001.
+
+- npm run frontend
+  Starts only the Vite frontend at http://127.0.0.1:5173.
 
 Recent verification showed:
 - TypeScript type checking passed.
@@ -539,13 +545,17 @@ Install backend dependencies:
 
 python -m pip install -r backend/requirements.txt
 
-Run backend:
+Run full development stack:
+
+npm run dev
+
+Run backend only:
 
 npm run backend
 
-Run development server:
+Run frontend only:
 
-npm run dev
+npm run frontend
 
 Open in browser:
 

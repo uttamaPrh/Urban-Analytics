@@ -322,25 +322,32 @@ Install backend dependencies:
 python -m pip install -r backend/requirements.txt
 ```
 
-Run the backend:
-
-```bash
-npm run backend
-```
-
-Backend URL:
-
-```text
-http://127.0.0.1:8001
-```
-
-Run the frontend development server:
+Run the full development stack:
 
 ```bash
 npm run dev
 ```
 
-Open:
+This starts both services:
+
+```text
+Frontend: http://127.0.0.1:5173
+Backend:  http://127.0.0.1:8001
+```
+
+Run only the backend:
+
+```bash
+npm run backend
+```
+
+Run only the frontend:
+
+```bash
+npm run frontend
+```
+
+Open the app:
 
 ```text
 http://127.0.0.1:5173

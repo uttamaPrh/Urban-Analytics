@@ -33,43 +33,13 @@ interface PredictionChartPoint {
 const PREDICTION_API_URL =
   import.meta.env.VITE_PREDICTION_API_URL ?? 'http://127.0.0.1:8001'
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
 async function fetchWdiPredictions(countryCode: string): Promise<WdiAllPredictionResponse> {
-  const urls = Array.from(
-    new Set([
-      PREDICTION_API_URL,
-      'http://127.0.0.1:8001',
-      'http://127.0.0.1:8000'
-    ])
-  )
-  const errors: string[] = []
-
-  for (const baseUrl of urls) {
-    try {
-      const response = await fetchWithTimeout(
-        `${baseUrl}/predict/all/${countryCode}`,
-        90000
-      )
-      if (!response.ok) {
-        throw new Error(`${baseUrl} returned ${response.status}`)
-      }
-      return (await response.json()) as WdiAllPredictionResponse
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error))
-    }
+  const response = await fetch(`${PREDICTION_API_URL}/predict/all/${countryCode}`)
+  if (!response.ok) {
+    const message = await response.text().catch(() => '')
+    throw new Error(`Prediction backend returned ${response.status}. ${message}`)
   }
-
-  throw new Error(`Prediction API unavailable. Tried ${urls.join(', ')}. ${errors.join(' | ')}`)
+  return (await response.json()) as WdiAllPredictionResponse
 }
 
 function formatCompact(value: number | null | undefined): string {
@@ -432,7 +402,9 @@ export default function PredictionsTab({
     enabled: !!countryCode,
     staleTime: 1000 * 60 * 60,
     gcTime: 1000 * 60 * 60 * 3,
-    retry: 1
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   })
 
   const populationFallback = useMemo(

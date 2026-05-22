@@ -17,7 +17,10 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 DATASET_NAME = "World Development Indicators (WDI)"
 PROVIDER = "World Bank Open Data"
-WORLD_BANK_URL = "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}"
+WORLD_BANK_URLS = [
+    "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
+    "http://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
+]
 WORLD_BANK_RETRIES = 4
 FORECAST_YEARS = 5
 MAX_FEATURE_MISSING_RATIO = 0.6
@@ -101,25 +104,33 @@ def fetch_indicator(country: str, indicator: str) -> tuple[tuple[int, float], ..
     for demographic, economic, education, technology, migration, and health
     signals. The API is free and does not require authentication.
     """
-    url = WORLD_BANK_URL.format(country=country.lower(), indicator=indicator)
     last_error: requests.RequestException | None = None
-    for attempt in range(1, WORLD_BANK_RETRIES + 1):
-        try:
-            response = requests.get(
-                url,
-                params={"format": "json", "per_page": 20000},
-                timeout=30,
-                headers={"User-Agent": "urban-analytics-wdi-ml/1.0"},
-            )
-            response.raise_for_status()
+    response: requests.Response | None = None
+
+    for url_template in WORLD_BANK_URLS:
+        url = url_template.format(country=country.lower(), indicator=indicator)
+        for attempt in range(1, WORLD_BANK_RETRIES + 1):
+            try:
+                response = requests.get(
+                    url,
+                    params={"format": "json", "per_page": 20000},
+                    timeout=30,
+                    headers={"User-Agent": "urban-analytics-wdi-ml/1.0"},
+                )
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                response = None
+                if attempt < WORLD_BANK_RETRIES:
+                    time.sleep(0.75 * attempt)
+        if response is not None:
             break
-        except requests.RequestException as exc:
-            last_error = exc
-            if attempt == WORLD_BANK_RETRIES:
-                raise
-            time.sleep(0.75 * attempt)
-    if last_error is not None and "response" not in locals():
-        raise last_error
+
+    if response is None:
+        if last_error is not None:
+            raise last_error
+        raise requests.RequestException(f"World Bank returned no response for {indicator}")
     response.raise_for_status()
     payload = response.json()
     rows = payload[1] if isinstance(payload, list) and len(payload) > 1 else []
@@ -140,18 +151,33 @@ def fetch_indicator(country: str, indicator: str) -> tuple[tuple[int, float], ..
 
 def build_indicator_frame(country: str, indicators: list[str]) -> pd.DataFrame:
     series_by_indicator: dict[str, pd.Series] = {}
+    target_indicator = indicators[0]
+    target_points = fetch_indicator(country, target_indicator)
+
+    if not target_points:
+        series_by_indicator[target_indicator] = pd.Series(dtype=float)
+    else:
+        series_by_indicator[target_indicator] = pd.Series(
+            {year: value for year, value in target_points},
+            dtype=float,
+        )
+
+    optional_indicators = indicators[1:]
 
     # Fetch WDI indicators concurrently. First-time uncached requests may need
     # many World Bank API calls, so serial fetching can make the dashboard look
     # stuck even when the backend is working correctly.
-    with ThreadPoolExecutor(max_workers=min(8, len(indicators))) as executor:
+    with ThreadPoolExecutor(max_workers=min(8, len(optional_indicators) or 1)) as executor:
         futures = {
             executor.submit(fetch_indicator, country, indicator): indicator
-            for indicator in indicators
+            for indicator in optional_indicators
         }
         for future in as_completed(futures):
             indicator = futures[future]
-            points = future.result()
+            try:
+                points = future.result()
+            except requests.RequestException:
+                points = ()
             if not points:
                 series_by_indicator[indicator] = pd.Series(dtype=float)
                 continue
