@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   CartesianGrid,
   Line,
@@ -11,9 +12,14 @@ import {
 } from 'recharts'
 import { WorldBankSeries } from '@/types'
 import { buildPrediction } from '@/lib/prediction'
-import { PredictionResult } from '@/types/prediction'
+import {
+  PredictionResult,
+  WdiAllPredictionResponse,
+  WdiPredictionResponse
+} from '@/types/prediction'
 
 interface PredictionsTabProps {
+  countryCode?: string
   populationSeries: WorldBankSeries | null | undefined
   gdpPerCapitaSeries: WorldBankSeries | null | undefined
 }
@@ -22,6 +28,48 @@ interface PredictionChartPoint {
   year: number
   actual?: number
   forecast?: number
+}
+
+const PREDICTION_API_URL =
+  import.meta.env.VITE_PREDICTION_API_URL ?? 'http://127.0.0.1:8001'
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+async function fetchWdiPredictions(countryCode: string): Promise<WdiAllPredictionResponse> {
+  const urls = Array.from(
+    new Set([
+      PREDICTION_API_URL,
+      'http://127.0.0.1:8001',
+      'http://127.0.0.1:8000'
+    ])
+  )
+  const errors: string[] = []
+
+  for (const baseUrl of urls) {
+    try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}/predict/all/${countryCode}`,
+        90000
+      )
+      if (!response.ok) {
+        throw new Error(`${baseUrl} returned ${response.status}`)
+      }
+      return (await response.json()) as WdiAllPredictionResponse
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  throw new Error(`Prediction API unavailable. Tried ${urls.join(', ')}. ${errors.join(' | ')}`)
 }
 
 function formatCompact(value: number | null | undefined): string {
@@ -54,7 +102,41 @@ function calculateGrowth(latest: number | null, predicted: number | null): numbe
   return ((predicted - latest) / latest) * 100
 }
 
-function toPredictionChartData(
+function toBackendChartData(
+  result: WdiPredictionResponse,
+  scale = 1,
+  historicalYears = 12
+): PredictionChartPoint[] {
+  const visibleHistorical = result.historical_actual_data.slice(-historicalYears)
+  const latestActual = result.historical_actual_data[result.historical_actual_data.length - 1]
+  const rows = new Map<number, PredictionChartPoint>()
+
+  visibleHistorical.forEach((point) => {
+    rows.set(point.year, {
+      year: point.year,
+      actual: point.value / scale
+    })
+  })
+
+  if (latestActual) {
+    rows.set(latestActual.year, {
+      ...rows.get(latestActual.year),
+      year: latestActual.year,
+      forecast: latestActual.value / scale
+    })
+  }
+
+  result.predicted_future_data.forEach((point) => {
+    rows.set(point.year, {
+      year: point.year,
+      forecast: point.value / scale
+    })
+  })
+
+  return Array.from(rows.values()).sort((a, b) => a.year - b.year)
+}
+
+function toFallbackChartData(
   result: PredictionResult,
   scale = 1,
   historicalYears = 12
@@ -157,11 +239,13 @@ function EmptyState({ label }: { label: string }) {
 function PredictionChart({
   data,
   latestYear,
-  yAxisWidth
+  yAxisWidth,
+  valueFormatter
 }: {
   data: PredictionChartPoint[]
   latestYear: number | undefined
   yAxisWidth: number
+  valueFormatter: (value: number | null | undefined) => string
 }) {
   if (data.length < 2 || latestYear === undefined) {
     return <EmptyState label="Not enough historical data to generate a forecast chart." />
@@ -172,16 +256,24 @@ function PredictionChart({
       <LineChart data={data}>
         <CartesianGrid stroke="#1e293b" vertical={false} />
         <XAxis dataKey="year" stroke="#94a3b8" tickLine={false} />
-        <YAxis stroke="#94a3b8" tickLine={false} width={yAxisWidth} />
-        <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155' }} />
-        <ReferenceLine
-          x={latestYear}
-          stroke="#f59e0b"
-          strokeDasharray="4 4"
+        <YAxis
+          stroke="#94a3b8"
+          tickLine={false}
+          width={yAxisWidth}
+          tickFormatter={(value) => valueFormatter(Number(value))}
         />
+        <Tooltip
+          contentStyle={{ background: '#0f172a', border: '1px solid #334155' }}
+          formatter={(value, name) => [
+            valueFormatter(Number(value)),
+            name === 'actual' ? 'Actual' : 'Forecast'
+          ]}
+        />
+        <ReferenceLine x={latestYear} stroke="#f59e0b" strokeDasharray="4 4" />
         <Line
           type="monotone"
           dataKey="actual"
+          name="Actual"
           stroke="#22d3ee"
           strokeWidth={3}
           dot={false}
@@ -190,6 +282,7 @@ function PredictionChart({
         <Line
           type="monotone"
           dataKey="forecast"
+          name="Forecast"
           stroke="#f59e0b"
           strokeWidth={3}
           strokeDasharray="7 5"
@@ -201,7 +294,75 @@ function PredictionChart({
   )
 }
 
-function MetricsPanel({
+function BackendMetricsPanel({
+  title,
+  result,
+  valueFormatter
+}: {
+  title: string
+  result: WdiPredictionResponse
+  valueFormatter: (value: number | null | undefined) => string
+}) {
+  return (
+    <div className="rounded-lg border border-slate-700/70 bg-slate-900/70 p-5">
+      <div className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+        {title}
+      </div>
+      <dl className="mt-5 grid gap-4 text-sm md:grid-cols-4">
+        <div className="rounded-md bg-slate-950/70 p-4">
+          <dt className="text-slate-400">Model</dt>
+          <dd className="mt-2 text-lg font-bold text-white">{result.model_used}</dd>
+        </div>
+        <div className="rounded-md bg-slate-950/70 p-4">
+          <dt className="text-slate-400">MAE</dt>
+          <dd className="mt-2 text-xl font-bold text-white">{valueFormatter(result.mae)}</dd>
+        </div>
+        <div className="rounded-md bg-slate-950/70 p-4">
+          <dt className="text-slate-400">RMSE</dt>
+          <dd className="mt-2 text-xl font-bold text-white">{valueFormatter(result.rmse)}</dd>
+        </div>
+        <div className="rounded-md bg-slate-950/70 p-4">
+          <dt className="text-slate-400">R2 / years</dt>
+          <dd className="mt-2 text-xl font-bold text-white">
+            {formatNumber(result.r2_score, 2)} / {result.training_years_used}
+          </dd>
+        </div>
+      </dl>
+      <div className="mt-5 grid gap-4 text-sm lg:grid-cols-2">
+        <div>
+          <div className="mb-2 font-semibold text-slate-300">Features used</div>
+          <div className="flex flex-wrap gap-2">
+            {result.features_used.length > 0 ? (
+              result.features_used.map((feature) => (
+                <span key={feature} className="rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-cyan-100">
+                  {feature}
+                </span>
+              ))
+            ) : (
+              <span className="text-slate-400">Trend fallback only</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 font-semibold text-slate-300">Dropped features</div>
+          <div className="flex flex-wrap gap-2">
+            {result.features_dropped.length > 0 ? (
+              result.features_dropped.map((feature) => (
+                <span key={feature} className="rounded-md border border-amber-300/20 bg-amber-400/10 px-2 py-1 text-amber-100">
+                  {feature}
+                </span>
+              ))
+            ) : (
+              <span className="text-slate-400">None</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FallbackMetricsPanel({
   title,
   result,
   valueFormatter
@@ -241,41 +402,172 @@ function MetricsPanel({
           </dd>
         </div>
       </dl>
-      {result.metrics.holdoutYears > 0 && (
-        <div className="mt-4 text-sm text-slate-400">
-          Model selected by lowest RMSE on the most recent {result.metrics.holdoutYears} holdout years, then retrained on all available history.
-        </div>
-      )}
+    </div>
+  )
+}
+
+function WarningsPanel({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-amber-300/30 bg-amber-950/20 p-5 text-sm text-amber-100">
+      <div className="mb-3 font-semibold uppercase tracking-wide">Missing Data Warnings</div>
+      <ul className="space-y-2">
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
     </div>
   )
 }
 
 export default function PredictionsTab({
+  countryCode,
   populationSeries,
   gdpPerCapitaSeries
 }: PredictionsTabProps): JSX.Element {
-  const populationPrediction = useMemo(
+  const backendPrediction = useQuery<WdiAllPredictionResponse, Error>({
+    queryKey: ['wdi-predictions', countryCode],
+    queryFn: () => fetchWdiPredictions(countryCode as string),
+    enabled: !!countryCode,
+    staleTime: 1000 * 60 * 60,
+    gcTime: 1000 * 60 * 60 * 3,
+    retry: 1
+  })
+
+  const populationFallback = useMemo(
     () => buildPrediction(populationSeries, 5),
     [populationSeries]
   )
-  const gdpPrediction = useMemo(
+  const gdpFallback = useMemo(
     () => buildPrediction(gdpPerCapitaSeries, 5),
     [gdpPerCapitaSeries]
   )
 
-  const latestPopulation = populationPrediction.historical[populationPrediction.historical.length - 1]
-  const latestGdp = gdpPrediction.historical[gdpPrediction.historical.length - 1]
-  const predictedPopulation = populationPrediction.forecast[populationPrediction.forecast.length - 1]
-  const predictedGdp = gdpPrediction.forecast[gdpPrediction.forecast.length - 1]
+  if (backendPrediction.isLoading) {
+    return (
+      <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-6 text-slate-300">
+        <div className="font-semibold text-white">Loading WDI machine learning forecasts...</div>
+        <div className="mt-2 text-sm text-slate-400">
+          The first request can take 20-45 seconds because the backend fetches multiple World Bank indicators and trains ML models.
+        </div>
+      </div>
+    )
+  }
+
+  if (backendPrediction.data) {
+    const population = backendPrediction.data.population
+    const gdp = backendPrediction.data.gdp
+    const latestPopulation = population.historical_actual_data[population.historical_actual_data.length - 1]
+    const latestGdp = gdp.historical_actual_data[gdp.historical_actual_data.length - 1]
+    const finalPopulationForecast = population.predicted_future_data[population.predicted_future_data.length - 1]
+    const finalGdpForecast = gdp.predicted_future_data[gdp.predicted_future_data.length - 1]
+    const populationChartData = toBackendChartData(population, 1000000)
+    const gdpChartData = toBackendChartData(gdp)
+    const warnings = [
+      ...population.missing_data_warnings.map((warning) => `Population: ${warning}`),
+      ...gdp.missing_data_warnings.map((warning) => `GDP: ${warning}`)
+    ]
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-lg border border-slate-700/70 bg-slate-900/70 p-5">
+          <div className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+            Dataset
+          </div>
+          <div className="mt-2 text-lg font-bold text-white">{backendPrediction.data.dataset_name}</div>
+          <div className="text-sm text-slate-400">{backendPrediction.data.provider}</div>
+          <div className="mt-3 inline-flex rounded-md border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-sm font-semibold text-emerald-100">
+            Using FastAPI WDI ML backend, not frontend fallback
+          </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <KpiCard
+            label="Latest population"
+            value={formatCompact(population.latest_actual_value)}
+            detail={latestPopulation ? `Actual ${latestPopulation.year}` : 'Unavailable'}
+            tone="cyan"
+          />
+          <KpiCard
+            label="Population in 5 years"
+            value={formatCompact(population.predicted_value_after_5_years)}
+            detail={`Forecast ${finalPopulationForecast?.year ?? ''}`}
+            tone="green"
+          />
+          <KpiCard
+            label="Population growth"
+            value={`${formatNumber(population.growth_percentage)}%`}
+            detail="Five-year forecast"
+            tone="cyan"
+          />
+          <KpiCard
+            label="Latest GDP per capita"
+            value={formatCurrency(gdp.latest_actual_value)}
+            detail={latestGdp ? `Actual ${latestGdp.year}` : 'Unavailable'}
+            tone="amber"
+          />
+          <KpiCard
+            label="GDP per capita in 5 years"
+            value={formatCurrency(gdp.predicted_value_after_5_years)}
+            detail={`Forecast ${finalGdpForecast?.year ?? ''}`}
+            tone="rose"
+          />
+          <KpiCard
+            label="GDP growth"
+            value={`${formatNumber(gdp.growth_percentage)}%`}
+            detail="Five-year forecast"
+            tone="amber"
+          />
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <ChartPanel title="Population ML Forecast (millions)">
+            <PredictionChart
+              data={populationChartData}
+              latestYear={latestPopulation?.year}
+              yAxisWidth={56}
+              valueFormatter={(value) => `${formatNumber(value, 0)}M`}
+            />
+          </ChartPanel>
+          <ChartPanel title="GDP Per Capita ML Forecast">
+            <PredictionChart
+              data={gdpChartData}
+              latestYear={latestGdp?.year}
+              yAxisWidth={72}
+              valueFormatter={formatCurrency}
+            />
+          </ChartPanel>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <BackendMetricsPanel
+            title="Population Model Evaluation"
+            result={population}
+            valueFormatter={formatCompact}
+          />
+          <BackendMetricsPanel
+            title="GDP Model Evaluation"
+            result={gdp}
+            valueFormatter={formatCurrency}
+          />
+        </section>
+
+        <WarningsPanel warnings={warnings} />
+      </div>
+    )
+  }
+
+  const latestPopulation = populationFallback.historical[populationFallback.historical.length - 1]
+  const latestGdp = gdpFallback.historical[gdpFallback.historical.length - 1]
+  const predictedPopulation = populationFallback.forecast[populationFallback.forecast.length - 1]
+  const predictedGdp = gdpFallback.forecast[gdpFallback.forecast.length - 1]
   const populationGrowth = calculateGrowth(latestPopulation?.value ?? null, predictedPopulation?.value ?? null)
   const gdpGrowth = calculateGrowth(latestGdp?.value ?? null, predictedGdp?.value ?? null)
+  const populationChartData = toFallbackChartData(populationFallback, 1000000)
+  const gdpChartData = toFallbackChartData(gdpFallback)
 
-  const populationChartData = toPredictionChartData(populationPrediction, 1000000)
-  const gdpChartData = toPredictionChartData(gdpPrediction)
-  const hasPopulationForecast = populationPrediction.forecast.length > 0
-  const hasGdpForecast = gdpPrediction.forecast.length > 0
-
-  if (!hasPopulationForecast && !hasGdpForecast) {
+  if (populationFallback.forecast.length === 0 && gdpFallback.forecast.length === 0) {
     return (
       <EmptyState label="Prediction data is unavailable for this country because the World Bank time series is missing or too short." />
     )
@@ -283,6 +575,11 @@ export default function PredictionsTab({
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-amber-300/30 bg-amber-950/20 p-4 text-sm text-amber-100">
+        WDI ML backend is unavailable, so the dashboard is showing the browser fallback forecast.
+        {backendPrediction.error ? ` Reason: ${backendPrediction.error.message}.` : ''}
+      </div>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label="Latest population"
@@ -317,39 +614,33 @@ export default function PredictionsTab({
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <ChartPanel title="Population Forecast (millions)">
-          {hasPopulationForecast ? (
-            <PredictionChart
-              data={populationChartData}
-              latestYear={latestPopulation?.year}
-              yAxisWidth={56}
-            />
-          ) : (
-            <EmptyState label="Population forecast is unavailable." />
-          )}
+        <ChartPanel title="Population Fallback Forecast (millions)">
+          <PredictionChart
+            data={populationChartData}
+            latestYear={latestPopulation?.year}
+            yAxisWidth={56}
+            valueFormatter={(value) => `${formatNumber(value, 0)}M`}
+          />
         </ChartPanel>
-        <ChartPanel title="GDP Per Capita Forecast">
-          {hasGdpForecast ? (
-            <PredictionChart
-              data={gdpChartData}
-              latestYear={latestGdp?.year}
-              yAxisWidth={72}
-            />
-          ) : (
-            <EmptyState label="GDP per capita forecast is unavailable." />
-          )}
+        <ChartPanel title="GDP Per Capita Fallback Forecast">
+          <PredictionChart
+            data={gdpChartData}
+            latestYear={latestGdp?.year}
+            yAxisWidth={72}
+            valueFormatter={formatCurrency}
+          />
         </ChartPanel>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <MetricsPanel
-          title="Population Model Evaluation"
-          result={populationPrediction}
+        <FallbackMetricsPanel
+          title="Population Fallback Evaluation"
+          result={populationFallback}
           valueFormatter={formatCompact}
         />
-        <MetricsPanel
-          title="GDP Model Evaluation"
-          result={gdpPrediction}
+        <FallbackMetricsPanel
+          title="GDP Fallback Evaluation"
+          result={gdpFallback}
           valueFormatter={formatCurrency}
         />
       </section>

@@ -23,7 +23,7 @@ The project aims to:
 - Show population, area, density, capital, and regional information.
 - Show population and urbanization trends using charts.
 - Show economic indicators such as GDP per capita.
-- Forecast future population and GDP per capita using an explainable time-series model selection approach.
+- Forecast future population and GDP per capita using a FastAPI machine learning backend with World Bank WDI indicators.
 - Show safety indicators globally using World Bank data.
 - Show sampled UK Police street incident data for Great Britain when available.
 - Present analytics in a clean, modern, dark-themed dashboard.
@@ -56,6 +56,15 @@ Build and Tooling:
 - TypeScript compiler
 - PostCSS
 - Autoprefixer
+
+Backend and Machine Learning:
+- Python
+- FastAPI
+- Uvicorn
+- pandas
+- numpy
+- scikit-learn
+- requests
 
 
 5. MAIN FEATURES
@@ -140,11 +149,12 @@ The Predictions tab forecasts:
 - Population growth for the next 5 years.
 - GDP per capita growth for the next 5 years.
 
-The prediction feature uses existing World Bank historical time-series data already fetched by the application. It does not use any paid API, backend service, or external machine learning service.
+The prediction feature uses the World Bank World Development Indicators dataset. A FastAPI backend fetches WDI indicators, merges them by year, handles missing values, trains machine learning models, evaluates them, and returns forecasts to the React dashboard.
 
 The prediction logic is separated from the UI:
-- src/lib/prediction.ts contains the forecasting and evaluation functions.
-- src/types/prediction.ts contains TypeScript types for prediction data.
+- backend/app.py contains the WDI data fetching, cleaning, model training, model comparison, and API endpoints.
+- src/lib/prediction.ts contains the browser fallback forecasting functions.
+- src/types/prediction.ts contains TypeScript types for prediction data and backend responses.
 - src/components/Sidebar/PredictionsTab.tsx contains the dashboard UI for charts, KPI cards, and model evaluation.
 
 The Predictions tab shows:
@@ -153,9 +163,14 @@ The Predictions tab shows:
 - Latest actual GDP per capita.
 - Predicted GDP per capita in 5 years.
 - Five-year growth percentage.
+- Model used.
 - MAE for model evaluation.
 - RMSE for model evaluation.
+- R2 score for model evaluation.
 - Number of years used for training.
+- Features used by the model.
+- Features dropped because of missing data.
+- Missing data warnings.
 
 The prediction charts use Recharts and separate actual historical values from forecast values using different line styles.
 
@@ -175,6 +190,38 @@ World Bank API:
 - Used for population and GDP per capita forecasting input data.
 - Used for global safety indicators such as homicide rate and business crime impact.
 
+World Development Indicators (WDI):
+- Dataset provider: World Bank Open Data.
+- Used as the main machine learning dataset for population and GDP per capita prediction.
+- Accessed through the World Bank Indicators API.
+
+WDI population target:
+- SP.POP.TOTL - Population, total
+
+WDI population input features:
+- SP.POP.GROW - Population growth annual %
+- SP.DYN.TFRT.IN - Fertility rate
+- SP.DYN.CBRT.IN - Birth rate
+- SP.DYN.CDRT.IN - Death rate
+- SP.DYN.LE00.IN - Life expectancy at birth
+- SM.POP.NETM - Net migration
+- SP.URB.TOTL.IN.ZS - Urban population %
+- EN.POP.DNST - Population density
+
+WDI GDP per capita target:
+- NY.GDP.PCAP.CD - GDP per capita
+
+WDI GDP input features:
+- NY.GDP.MKTP.KD.ZG - GDP growth annual %
+- FP.CPI.TOTL.ZG - Inflation annual %
+- SL.UEM.TOTL.ZS - Unemployment %
+- NE.TRD.GNFS.ZS - Trade % of GDP
+- BX.KLT.DINV.WD.GD.ZS - FDI net inflows % of GDP
+- IT.NET.USER.ZS - Individuals using the Internet %
+- SE.XPD.TOTL.GD.ZS - Government education expenditure % of GDP
+- SP.URB.TOTL.IN.ZS - Urban population %
+- SP.DYN.LE00.IN - Life expectancy at birth
+
 UK Police API:
 - Used for local street crime incident data in Great Britain.
 
@@ -191,6 +238,13 @@ Natural Earth / countries.geojson:
 7. PROJECT STRUCTURE
 
 urban-analytics/
+
+- backend/
+  - app.py
+    FastAPI backend for WDI fetching, preprocessing, model training, model evaluation, and prediction endpoints.
+
+  - requirements.txt
+    Python dependencies for the backend.
 
 - src/
   - App.tsx
@@ -311,93 +365,76 @@ The dashboard uses:
 
 12. PREDICTION MODEL AND FORMULAS
 
-The project originally used simple linear regression, but that approach was too weak for nonlinear population and GDP per capita trends. The project now uses a lightweight browser-safe model selection approach.
+The project now uses a FastAPI machine learning backend for the main prediction workflow. The backend uses World Bank WDI indicators and compares a baseline Linear Regression model against a Random Forest Regressor.
 
 Candidate models:
-- Damped Holt log-trend model.
-- Log-linear growth model.
-- Centered linear regression fallback.
+- Linear Regression baseline.
+- Random Forest Regressor.
+- Log-linear trend fallback when WDI data quality is too weak for ML.
 
-The app tests candidate models against recent holdout years using RMSE. It then selects the best-performing model and retrains it on all available historical data before generating the next 5 forecast years.
+The backend uses time-ordered training and testing. It does not use a random split because the data is a time series. The most recent years are used as the holdout period for model comparison.
 
-12.1 Primary Formula: Damped Holt Log-Trend
+12.1 Linear Regression Baseline
 
-The primary forecasting model transforms the original indicator value using a natural logarithm:
+Linear Regression is used as the baseline model. It estimates a linear relationship between WDI input features and the target variable.
 
-z(t) = ln(y(t))
-
-Where:
-- y(t) is the original value at year t.
-- z(t) is the log-transformed value.
-
-The model then updates a smoothed level and trend:
-
-level(t) = alpha * z(t) + (1 - alpha) * (level(t-1) + phi * trend(t-1))
-
-trend(t) = beta * (level(t) - level(t-1)) + (1 - beta) * phi * trend(t-1)
+y = beta0 + beta1*x1 + beta2*x2 + ... + betan*xn
 
 Where:
-- alpha controls how strongly the latest value affects the level.
-- beta controls how strongly the trend is updated.
-- phi is the damping parameter.
+- y is the target value.
+- beta0 is the intercept.
+- beta1 to betan are learned coefficients.
+- x1 to xn are WDI input features.
 
-The future log-value is forecast using:
+12.2 Random Forest Regressor
 
-z(t+h) = level(t) + (phi + phi^2 + ... + phi^h) * trend(t)
+Random Forest Regressor is the main ML model. It trains many decision trees and averages their predictions.
+
+Prediction formula structure:
+
+y_hat = (1 / T) * sum(tree_i(x))
+
+Where:
+- T is the number of trees.
+- tree_i(x) is the prediction from one decision tree.
+- y_hat is the final averaged prediction.
+
+Random Forest is useful because it can model nonlinear relationships between indicators such as life expectancy, fertility, urbanization, GDP growth, internet use, and trade.
+
+12.3 Future Feature Estimation
+
+Future WDI feature values are not available. The backend estimates future feature values using simple trend extrapolation from historical feature values.
+
+futureFeatureValue = trendModel.predict(futureYear)
+
+These estimated future features are passed into the selected ML model to generate population and GDP per capita forecasts.
+
+12.4 Log-Linear Fallback
+
+If too few rows or too few ML features are available, the backend falls back to a log-linear trend model:
+
+ln(y) = mx + b
 
 The forecast is converted back to the original scale:
 
-y(t+h) = exp(z(t+h))
+y = exp(mx + b)
 
-This model is better than plain linear regression for steadily changing GDP and population data because it models percentage-like growth and gradually damps future growth.
+12.5 Data Cleaning and Missing Value Handling
 
-12.2 Fallback Formula: Linear Regression
-
-The fallback model uses:
-- x = year
-- y = indicator value
-
-It fits the following equation:
-
-y = mx + b
-
-Where:
-- y is the predicted value.
-- x is the year.
-- m is the slope.
-- b is the intercept.
-
-The slope formula is:
-
-m = (n * sum(xy) - sum(x) * sum(y)) / (n * sum(x^2) - (sum(x))^2)
-
-The intercept formula is:
-
-b = (sum(y) - m * sum(x)) / n
-
-When this model is selected, future values are predicted using:
-
-predictedValue = m * futureYear + b
-
-The app forecasts 5 years after the latest available World Bank year. For example, if the latest available year is 2023, predictions are generated for 2024, 2025, 2026, 2027, and 2028.
-
-Negative forecast values are clamped to zero because population and GDP per capita should not be displayed as negative values in this dashboard.
-
-12.3 Data Cleaning Formula and Logic
-
-The cleanTimeSeriesData() function prepares World Bank data by:
+The backend prepares WDI data by:
 - Removing null values.
 - Removing invalid years.
 - Removing invalid numeric values.
-- Sorting the remaining values by year.
+- Merging indicators by year.
+- Dropping indicators with too much missing data.
+- Dropping years with too many missing feature values.
+- Using limited forward-fill and backward-fill for short gaps.
+- Continuing with available optional features where possible.
+- Returning warnings for missing or dropped indicators.
 
-The cleaned data points have this structure:
+12.6 Forecast Generation
 
-{ year: number, value: number }
-
-12.4 Forecast Generation
-
-The generateForecast() function uses the trained regression model and the latest actual year:
+The backend forecasts 5 years after the latest available WDI year:
 
 futureYear = latestYear + i
 
@@ -407,7 +444,7 @@ Then:
 
 forecastValue = selectedModel.predict(futureYear)
 
-12.5 Growth Percentage Formula
+12.7 Growth Percentage Formula
 
 The five-year growth percentage is calculated as:
 
@@ -415,7 +452,7 @@ growthPercentage = ((predictedValueInFiveYears - latestActualValue) / latestActu
 
 This formula is used for both population growth and GDP per capita growth.
 
-12.6 MAE Formula
+12.8 MAE Formula
 
 Mean Absolute Error measures the average absolute error between actual values and fitted model values:
 
@@ -423,7 +460,7 @@ MAE = sum(abs(actualValue - predictedValue)) / n
 
 Lower MAE means the model predictions are closer to the historical values.
 
-12.7 RMSE Formula
+12.9 RMSE Formula
 
 Root Mean Squared Error measures the square root of the average squared error:
 
@@ -431,15 +468,21 @@ RMSE = sqrt(sum((actualValue - predictedValue)^2) / n)
 
 RMSE penalizes larger errors more strongly than MAE.
 
-12.8 Model Selection Formula
+12.10 R2 Formula
 
-Each candidate model is evaluated on recent holdout years. The selected model is:
+R2 measures how much variance in the target is explained by the model:
+
+R2 = 1 - (sum((actualValue - predictedValue)^2) / sum((actualValue - meanActualValue)^2))
+
+12.11 Model Selection Formula
+
+Linear Regression and Random Forest are evaluated on recent holdout years. The selected model is:
 
 bestModel = model with minimum holdout RMSE
 
 This helps avoid a model that looks good across all old historical data but performs poorly on the most recent years.
 
-12.9 Missing Data Handling
+12.12 Missing Data Handling
 
 The prediction feature safely handles missing or incomplete data. If fewer than two valid data points are available, the app does not train a model and shows an unavailable state instead of crashing.
 
@@ -471,6 +514,9 @@ The project includes the following verification commands:
 - npm run build
   Creates a production build using Vite.
 
+- npm run backend
+  Starts the FastAPI backend at http://127.0.0.1:8001.
+
 Recent verification showed:
 - TypeScript type checking passed.
 - Production build passed.
@@ -482,11 +528,20 @@ Recent verification showed:
 Prerequisites:
 - Node.js version 18 or higher
 - npm
+- Python 3.11 or higher
 - Internet connection
 
 Install dependencies:
 
 npm install
+
+Install backend dependencies:
+
+python -m pip install -r backend/requirements.txt
+
+Run backend:
+
+npm run backend
 
 Run development server:
 
@@ -494,7 +549,7 @@ npm run dev
 
 Open in browser:
 
-http://localhost:5173
+http://127.0.0.1:5173
 
 Build for production:
 
@@ -503,6 +558,13 @@ npm run build
 Preview production build:
 
 npm run preview
+
+Example backend API calls:
+
+GET http://127.0.0.1:8001/health
+GET http://127.0.0.1:8001/predict/population/IND
+GET http://127.0.0.1:8001/predict/gdp/IND
+GET http://127.0.0.1:8001/predict/all/IND
 
 
 17. FUTURE IMPROVEMENTS
@@ -518,12 +580,12 @@ Possible future improvements include:
 - Add code splitting to reduce production bundle size.
 - Add automated UI tests.
 - Add comparison mode for two or more countries.
-- Add backend-trained forecasting models such as Random Forest, XGBoost, Prophet, LSTM, Transformer models, or ARIMA.
+- Add XGBoost, Prophet, LSTM, Transformer models, or ARIMA.
 - Add confidence intervals for forecast values.
 
 
 18. CONCLUSION
 
-Urban Analytics Platform is a modern React and TypeScript application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, country-specific dashboard sections, and simple forecasting models.
+Urban Analytics Platform is a modern full-stack application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, country-specific dashboard sections, and machine learning forecasts.
 
-The project demonstrates frontend development, geospatial visualization, API integration, state management, data transformation, chart-based analytics, and explainable prediction modelling in a single application.
+The project demonstrates frontend development, backend API development, geospatial visualization, API integration, state management, data transformation, chart-based analytics, missing data handling, and machine learning prediction modelling in a single application.

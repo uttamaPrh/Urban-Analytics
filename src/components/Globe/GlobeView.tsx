@@ -5,8 +5,8 @@ import { CountriesGeoJSON, CountryFeature, LatLng } from '@/types'
 import { bboxFromCoordinates, centroidOfCoords } from '@/lib/geoUtils'
 
 const GEOJSON_PATH = '/countries.geojson'
-const EARTH_IMAGE = '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg'
-const EARTH_BUMP = '//unpkg.com/three-globe/example/img/earth-topology.png'
+const EARTH_IMAGE = '/textures/earth-blue-marble.jpg'
+const EARTH_BUMP = '/textures/earth-topology.png'
 
 type CountryLabel = {
   feature: CountryFeature

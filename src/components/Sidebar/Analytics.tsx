@@ -457,6 +457,7 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
 
             {activeTab === "predictions" && (
               <PredictionsTab
+                countryCode={country.code}
                 populationSeries={data.populationSeries}
                 gdpPerCapitaSeries={data.gdpPerCapitaSeries}
               />
