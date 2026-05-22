@@ -18,8 +18,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 DATASET_NAME = "World Development Indicators (WDI)"
 PROVIDER = "World Bank Open Data"
 WORLD_BANK_URLS = [
-    "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
     "http://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
+    "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
 ]
 WORLD_BANK_RETRIES = 4
 FORECAST_YEARS = 5
@@ -489,6 +489,16 @@ def predict(country: str, target: str, features: dict[str, str]) -> dict[str, An
     }
 
 
+@lru_cache(maxsize=256)
+def cached_predict_population(country_code: str) -> dict[str, Any]:
+    return predict(country_code, POPULATION_TARGET, POPULATION_FEATURES)
+
+
+@lru_cache(maxsize=256)
+def cached_predict_gdp(country_code: str) -> dict[str, Any]:
+    return predict(country_code, GDP_TARGET, GDP_FEATURES)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {
@@ -500,12 +510,12 @@ def health() -> dict[str, str]:
 
 @app.get("/predict/population/{country_code}")
 def predict_population(country_code: str) -> dict[str, Any]:
-    return predict(country_code, POPULATION_TARGET, POPULATION_FEATURES)
+    return cached_predict_population(country_code.upper())
 
 
 @app.get("/predict/gdp/{country_code}")
 def predict_gdp(country_code: str) -> dict[str, Any]:
-    return predict(country_code, GDP_TARGET, GDP_FEATURES)
+    return cached_predict_gdp(country_code.upper())
 
 
 @app.get("/predict/all/{country_code}")
@@ -514,16 +524,12 @@ def predict_all(country_code: str) -> dict[str, Any]:
     # This cuts first-load latency for the dashboard Predictions tab.
     with ThreadPoolExecutor(max_workers=2) as executor:
         population_future = executor.submit(
-            predict,
-            country_code,
-            POPULATION_TARGET,
-            POPULATION_FEATURES,
+            cached_predict_population,
+            country_code.upper(),
         )
         gdp_future = executor.submit(
-            predict,
-            country_code,
-            GDP_TARGET,
-            GDP_FEATURES,
+            cached_predict_gdp,
+            country_code.upper(),
         )
 
     return {
