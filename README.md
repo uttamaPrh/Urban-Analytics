@@ -19,6 +19,7 @@ Tech stack: Vite, React 18, TypeScript, TailwindCSS, Zustand, TanStack React Que
 - FastAPI machine learning backend using World Bank World Development Indicators.
 - Model evaluation with MAE, RMSE, R2, and number of training years.
 - Public API based data fetching with no paid APIs.
+- Local-first texture assets for globe rendering (avoids remote CORS texture failures).
 
 ---
 
@@ -58,6 +59,7 @@ Backend model strategy:
 6. Compare Linear Regression and Random Forest Regressor using recent holdout RMSE.
 7. Select the better model and forecast the next five years.
 8. Estimate future feature values using simple trend extrapolation.
+9. Cache country prediction responses to reduce repeated network load.
 
 Frontend fallback strategy:
 
@@ -66,6 +68,10 @@ Frontend fallback strategy:
 3. Centered linear regression fallback.
 
 The backend is the preferred ML forecast. The TypeScript fallback exists only to keep the dashboard usable when the Python service is not running.
+
+Important interpretation note:
+- If the backend is reachable and returns success, the dashboard shows backend ML output.
+- If backend calls fail (network/server/API errors), the dashboard explicitly shows fallback status.
 
 ### WDI Dataset
 
@@ -224,6 +230,29 @@ The Predictions tab displays:
 - Features used and features dropped.
 - Missing data warnings.
 
+### Response Contract (Backend)
+
+Prediction responses include:
+
+- `countryCode`
+- `datasetName` = `World Development Indicators (WDI)`
+- `provider` = `World Bank Open Data`
+- `targetIndicator`
+- `modelUsed`
+- `featuresUsed`
+- `featuresDropped`
+- `warnings`
+- `historicalData`
+- `forecastData`
+- `latestActualValue`
+- `predictedValueIn5Years`
+- `growthPercentage`
+- `mae`
+- `rmse`
+- `r2`
+- `trainingYearsUsed`
+- `dataCoverageSummary`
+
 ### Missing Data Handling
 
 WDI data can be incomplete. The backend cleans and prepares it by:
@@ -308,6 +337,7 @@ Prerequisites:
 
 - Node.js 18 or higher.
 - npm.
+- Python 3.11 or higher.
 - Internet connection for API calls.
 
 Install dependencies:
@@ -401,6 +431,57 @@ Each prediction response includes:
 - Existing population and GDP data fetching remains in `usePopulationData.ts`.
 - No paid APIs or private keys are required.
 - The backend compares Linear Regression and Random Forest Regressor because Linear Regression is an interpretable baseline and Random Forest can capture nonlinear relationships among WDI indicators.
+
+---
+
+## Troubleshooting
+
+### 1) `ERR_CONNECTION_REFUSED` from Predictions tab
+
+Cause: FastAPI backend is not running (or wrong port).
+
+Fix:
+- Start backend: `npm run backend`
+- Check health: `http://127.0.0.1:8001/health`
+- Ensure frontend is calling `127.0.0.1:8001` (not `8000`).
+
+### 2) `WinError 10013` or `Errno 10048` on backend start
+
+Cause: port already in use or restricted.
+
+Fix:
+- Keep backend on `8001` as configured.
+- Stop previous Python/Uvicorn process using that port.
+- Re-run: `npm run backend`
+
+### 3) Backend returns `{"detail":"Not Found"}`
+
+Cause: wrong URL path.
+
+Fix:
+- Use valid endpoints:
+  - `/health`
+  - `/predict/population/{ISO3}`
+  - `/predict/gdp/{ISO3}`
+  - `/predict/all/{ISO3}`
+
+### 4) Backend returns `422 Not enough WDI target data ...`
+
+Cause: insufficient historical target points for that country/indicator.
+
+Fix:
+- Try another country with better WDI coverage.
+- The frontend will show fallback forecast when backend ML cannot be trained.
+- Check `warnings` and `dataCoverageSummary` in backend response.
+
+### 5) `502` / World Bank SSL or upstream API errors
+
+Cause: temporary upstream World Bank API/network issue.
+
+Fix:
+- Retry after a short delay.
+- Confirm internet access.
+- Backend includes retry/fallback URL handling, but persistent upstream outages can still fail.
 
 ---
 

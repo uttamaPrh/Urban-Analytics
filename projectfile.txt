@@ -173,6 +173,7 @@ The Predictions tab shows:
 - Missing data warnings.
 
 The prediction charts use Recharts and separate actual historical values from forecast values using different line styles.
+The backend responses are cached to reduce repeated API pressure when switching tabs or revisiting the same country.
 
 
 6. DATA SOURCES
@@ -348,6 +349,11 @@ TanStack React Query is used for API data fetching. It provides:
 - Refetch support
 - Reduced duplicate API calls
 
+For Predictions:
+- Backend ML endpoint is the primary source.
+- Browser forecast is a fallback only when backend is unavailable.
+- Automatic retry loops were reduced to avoid repeated noisy failures when backend is down.
+
 Each analytics area has its own hook. This keeps API logic separate from UI components.
 
 
@@ -486,6 +492,27 @@ This helps avoid a model that looks good across all old historical data but perf
 
 The prediction feature safely handles missing or incomplete data. If fewer than two valid data points are available, the app does not train a model and shows an unavailable state instead of crashing.
 
+12.13 Backend Response Contents
+
+Each prediction response includes:
+- Country code
+- Dataset name and provider
+- Target indicator
+- Model used
+- Features used
+- Features dropped
+- Missing data warnings
+- Historical actual series
+- Future forecast series
+- Latest actual value
+- Predicted value after 5 years
+- Growth percentage
+- MAE
+- RMSE
+- R2
+- Training years used
+- Data coverage summary
+
 
 13. SECURITY AND PRIVACY
 
@@ -527,6 +554,7 @@ Recent verification showed:
 - TypeScript type checking passed.
 - Production build passed.
 - TailwindCSS compilation was fixed by adding the PostCSS configuration.
+- Backend syntax validation passed using Python compile checks.
 
 
 16. INSTALLATION AND RUNNING
@@ -575,6 +603,29 @@ GET http://127.0.0.1:8001/health
 GET http://127.0.0.1:8001/predict/population/IND
 GET http://127.0.0.1:8001/predict/gdp/IND
 GET http://127.0.0.1:8001/predict/all/IND
+
+
+16.1 Troubleshooting Guide
+
+Issue: ERR_CONNECTION_REFUSED in browser network tab
+- Cause: backend is not running or wrong backend port.
+- Fix: run npm run backend and verify http://127.0.0.1:8001/health.
+
+Issue: WinError 10013 / Errno 10048 while starting backend
+- Cause: port conflict or restricted binding.
+- Fix: stop previous backend process and restart backend on port 8001.
+
+Issue: {"detail":"Not Found"}
+- Cause: wrong backend route.
+- Fix: use /health, /predict/population/{ISO3}, /predict/gdp/{ISO3}, or /predict/all/{ISO3}.
+
+Issue: {"detail":"Not enough WDI target data ..."}
+- Cause: insufficient historical target data for the requested country.
+- Fix: use a country with stronger WDI coverage; frontend fallback may still render an estimated forecast.
+
+Issue: 502 / SSL upstream failures from World Bank
+- Cause: temporary World Bank API/network instability.
+- Fix: wait and retry; backend already includes retry behavior and endpoint fallback.
 
 
 17. FUTURE IMPROVEMENTS
