@@ -1,652 +1,314 @@
-URBAN ANALYTICS PLATFORM - PROJECT REPORT
-
-1. PROJECT TITLE
-
-Urban Analytics Platform
-
-
-2. PROJECT OVERVIEW
-
-Urban Analytics Platform is a web-based geospatial analytics application that allows users to explore country-level urban indicators through an interactive globe and dashboard interface. The application lets a user select a country from a 3D globe and then view demographic, economic, urbanization, and safety-related analytics for that country.
-
-The platform is designed to combine public geographic data, country statistics, World Bank indicators, traffic and road data, air quality data, and crime or safety indicators into one interactive urban analytics experience.
-
-
-3. OBJECTIVE OF THE PROJECT
-
-The main objective of the project is to provide an interactive and visual analytics dashboard for understanding urban and country-level conditions across the world.
-
-The project aims to:
-
-- Display countries on an interactive 3D globe.
-- Allow users to select a country and view analytics.
-- Show population, area, density, capital, and regional information.
-- Show population and urbanization trends using charts.
-- Show economic indicators such as GDP per capita.
-- Forecast future population and GDP per capita using a FastAPI machine learning backend with World Bank WDI indicators.
-- Show safety indicators globally using World Bank data.
-- Show sampled UK Police street incident data for Great Britain when available.
-- Present analytics in a clean, modern, dark-themed dashboard.
-- Use free public APIs without requiring user authentication.
-
-
-4. TECHNOLOGY STACK
-
-Frontend:
-- React 18
-- TypeScript
-- Vite
-- TailwindCSS
-
-State Management:
-- Zustand
-
-Data Fetching:
-- TanStack React Query
-
-Charts and Visualization:
-- Recharts
-- Globe.gl
-- MapLibre GL
-- Deck.gl
-
-Build and Tooling:
-- Node.js
-- npm
-- TypeScript compiler
-- PostCSS
-- Autoprefixer
-
-Backend and Machine Learning:
-- Python
-- FastAPI
-- Uvicorn
-- pandas
-- numpy
-- scikit-learn
-- requests
-
-
-5. MAIN FEATURES
-
-5.1 Interactive 3D Globe
-
-The application starts with an interactive 3D globe. Users can rotate the globe and select countries. Once a country is selected, the application opens the analytics dashboard for that country.
-
-5.2 Country Analytics Dashboard
-
-After selecting a country, the dashboard displays a country-specific analytics view. The dashboard includes KPI cards, charts, and tab-based sections.
-
-Dashboard tabs include:
-- Overview
-- Population
-- Economy
-- Crime and Safety
-- Predictions
-
-5.3 Population Analytics
-
-The platform shows population-related information such as:
-- Total population
-- Population trend
-- Area
-- Population density
-- Capital city
-- Region and subregion
-
-Population data is fetched from REST Countries and World Bank APIs.
-
-5.4 Urbanization Analytics
-
-The application includes urbanization analytics, including:
-- Urban population share
-- Urbanization trend over time
-
-This helps users understand how urbanized a selected country is.
-
-5.5 Economy Analytics
-
-The economy section includes GDP per capita analytics. It displays:
-- Latest GDP per capita value
-- Historical GDP per capita chart
-
-This gives basic economic context for the selected country.
-
-5.6 Crime and Safety Analytics
-
-The crime and safety section uses a global data approach.
-
-For most countries:
-- Safety indicators are fetched from the World Bank.
-- Indicators include intentional homicide rate and business losses from crime where available.
-- Charts are used to show safety trends.
-
-For Great Britain:
-- The app also fetches sampled UK Police street crime incidents when available.
-- Local incident categories are displayed when incident data exists.
-
-This design avoids limiting the entire crime feature to UK-only data.
-
-5.7 Charts and Visual Analytics
-
-The dashboard uses Recharts to display:
-- Population trend charts
-- Urbanization trend charts
-- GDP per capita charts
-- Global homicide rate charts
-- Business crime impact charts
-- Safety indicator bars
-
-The charts make the analytics easier to understand than plain text values.
-
-5.8 Responsive Dark-Themed UI
-
-The interface uses a dark theme with styled cards, tabs, spacing, and chart panels. TailwindCSS is used for layout and styling.
-
-5.9 Predictions Analytics
-
-The Predictions tab forecasts:
-- Population growth for the next 5 years.
-- GDP per capita growth for the next 5 years.
-
-The prediction feature uses the World Bank World Development Indicators dataset. A FastAPI backend fetches WDI indicators, merges them by year, handles missing values, trains machine learning models, evaluates them, and returns forecasts to the React dashboard.
-
-The prediction logic is separated from the UI:
-- backend/app.py contains the WDI data fetching, cleaning, model training, model comparison, and API endpoints.
-- src/lib/prediction.ts contains the browser fallback forecasting functions.
-- src/types/prediction.ts contains TypeScript types for prediction data and backend responses.
-- src/components/Sidebar/PredictionsTab.tsx contains the dashboard UI for charts, KPI cards, and model evaluation.
-
-The Predictions tab shows:
-- Latest actual population.
-- Predicted population in 5 years.
-- Latest actual GDP per capita.
-- Predicted GDP per capita in 5 years.
-- Five-year growth percentage.
-- Model used.
-- MAE for model evaluation.
-- RMSE for model evaluation.
-- R2 score for model evaluation.
-- Number of years used for training.
-- Features used by the model.
-- Features dropped because of missing data.
-- Missing data warnings.
-
-The prediction charts use Recharts and separate actual historical values from forecast values using different line styles.
-The backend responses are cached to reduce repeated API pressure when switching tabs or revisiting the same country.
-
-
-6. DATA SOURCES
-
-The project uses free public data sources:
-
-REST Countries API:
-- Used for country profile data such as name, capital, region, area, and population.
-
-World Bank API:
-- Used for population time series.
-- Used for land area.
-- Used for urban population percentage.
-- Used for GDP per capita.
-- Used for population and GDP per capita forecasting input data.
-- Used for global safety indicators such as homicide rate and business crime impact.
-
-World Development Indicators (WDI):
-- Dataset provider: World Bank Open Data.
-- Used as the main machine learning dataset for population and GDP per capita prediction.
-- Accessed through the World Bank Indicators API.
-
-WDI population target:
-- SP.POP.TOTL - Population, total
-
-WDI population input features:
-- SP.POP.GROW - Population growth annual %
-- SP.DYN.TFRT.IN - Fertility rate
-- SP.DYN.CBRT.IN - Birth rate
-- SP.DYN.CDRT.IN - Death rate
-- SP.DYN.LE00.IN - Life expectancy at birth
-- SM.POP.NETM - Net migration
-- SP.URB.TOTL.IN.ZS - Urban population %
-- EN.POP.DNST - Population density
-
-WDI GDP per capita target:
-- NY.GDP.PCAP.CD - GDP per capita
-
-WDI GDP input features:
-- NY.GDP.MKTP.KD.ZG - GDP growth annual %
-- FP.CPI.TOTL.ZG - Inflation annual %
-- SL.UEM.TOTL.ZS - Unemployment %
-- NE.TRD.GNFS.ZS - Trade % of GDP
-- BX.KLT.DINV.WD.GD.ZS - FDI net inflows % of GDP
-- IT.NET.USER.ZS - Individuals using the Internet %
-- SE.XPD.TOTL.GD.ZS - Government education expenditure % of GDP
-- SP.URB.TOTL.IN.ZS - Urban population %
-- SP.DYN.LE00.IN - Life expectancy at birth
-
-UK Police API:
-- Used for local street crime incident data in Great Britain.
-
-OpenStreetMap Overpass API:
-- Used for road and traffic-related geospatial data.
-
-OpenAQ API:
-- Used for air quality location and measurement data.
-
-Natural Earth / countries.geojson:
-- Used for country boundaries and country selection.
-
-
-7. PROJECT STRUCTURE
-
-urban-analytics/
-
-- backend/
-  - app.py
-    FastAPI backend for WDI fetching, preprocessing, model training, model evaluation, and prediction endpoints.
-
-  - requirements.txt
-    Python dependencies for the backend.
-
-- src/
-  - App.tsx
-    Main application component. Shows the globe when no country is selected and the analytics dashboard when a country is selected.
-
-  - main.tsx
-    React application entry point. Sets up React Query provider.
-
-  - styles.css
-    Global CSS and TailwindCSS entry file.
-
-  - components/
-    - Globe/
-      Contains the 3D globe interface.
-
-    - Map/
-      Contains map and layer rendering logic.
-
-    - Sidebar/
-      Contains analytics dashboard and tab components.
-
-    - UI/
-      Contains reusable UI components such as navbar, stat cards, loading skeletons, and error panels.
-
-  - hooks/
-    Contains custom React Query hooks for fetching data:
-    - usePopulationData.ts
-    - useCrimeData.ts
-    - useTrafficData.ts
-    - useAQIData.ts
-    - useCountriesGeoJSON.ts
-
-  - lib/
-    Contains helper utilities:
-    - clustering
-    - color scales
-    - geographic utilities
-    - Overpass query builder
-    - prediction utilities
-
-  - store/
-    Contains Zustand global app state.
-
-  - types/
-    Contains shared TypeScript types.
-    Contains prediction-specific TypeScript types.
-
-- public/
-  - countries.geojson
-    Country boundary data used by the globe.
-
-- scripts/
-  - download-geodata.js
-  - download-geodata.ts
-    Scripts for downloading geographic data.
-
-- package.json
-  Project metadata, dependencies, and scripts.
-
-- vite.config.ts
-  Vite configuration.
-
-- tailwind.config.ts
-  TailwindCSS configuration.
-
-- postcss.config.cjs
-  PostCSS configuration used to compile TailwindCSS.
-
-
-8. APPLICATION WORKFLOW
-
-1. The user opens the application in the browser.
-2. The app displays the interactive 3D globe.
-3. The user selects a country.
-4. The selected country is saved in the Zustand store.
-5. The analytics dashboard opens for the selected country.
-6. React Query hooks fetch country-specific data from public APIs.
-7. The dashboard displays KPI cards, charts, and safety analytics.
-8. The user can switch between dashboard tabs.
-9. The user can return to the globe and select another country.
-
-
-9. STATE MANAGEMENT
-
-Zustand is used for global state management.
-
-The app stores:
-- Selected country
-- Active analytics tab
-- Current map bounding box
-
-This keeps country selection and dashboard state simple and centralized.
-
-
-10. DATA FETCHING APPROACH
-
-TanStack React Query is used for API data fetching. It provides:
-- Query caching
-- Loading states
-- Error states
-- Refetch support
-- Reduced duplicate API calls
-
-For Predictions:
-- Backend ML endpoint is the primary source.
-- Browser forecast is a fallback only when backend is unavailable.
-- Automatic retry loops were reduced to avoid repeated noisy failures when backend is down.
-
-Each analytics area has its own hook. This keeps API logic separate from UI components.
-
-
-11. CHARTING APPROACH
-
-Recharts is used for dashboard charts. The application transforms API time series into chart-friendly arrays containing year and value fields.
-
-The dashboard uses:
-- Area charts for population and homicide trends.
-- Line charts for urbanization trends.
-- Bar charts for population and business crime impact.
-- Visual indicator bars for latest safety values.
-- Forecast line charts for population and GDP per capita predictions.
-
-
-12. PREDICTION MODEL AND FORMULAS
-
-The project now uses a FastAPI machine learning backend for the main prediction workflow. The backend uses World Bank WDI indicators and compares a baseline Linear Regression model against a Random Forest Regressor.
-
-Candidate models:
-- Linear Regression baseline.
-- Random Forest Regressor.
-- Log-linear trend fallback when WDI data quality is too weak for ML.
-
-The backend uses time-ordered training and testing. It does not use a random split because the data is a time series. The most recent years are used as the holdout period for model comparison.
-
-12.1 Linear Regression Baseline
-
-Linear Regression is used as the baseline model. It estimates a linear relationship between WDI input features and the target variable.
-
-y = beta0 + beta1*x1 + beta2*x2 + ... + betan*xn
-
-Where:
-- y is the target value.
-- beta0 is the intercept.
-- beta1 to betan are learned coefficients.
-- x1 to xn are WDI input features.
-
-12.2 Random Forest Regressor
-
-Random Forest Regressor is the main ML model. It trains many decision trees and averages their predictions.
-
-Prediction formula structure:
-
-y_hat = (1 / T) * sum(tree_i(x))
-
-Where:
-- T is the number of trees.
-- tree_i(x) is the prediction from one decision tree.
-- y_hat is the final averaged prediction.
-
-Random Forest is useful because it can model nonlinear relationships between indicators such as life expectancy, fertility, urbanization, GDP growth, internet use, and trade.
-
-12.3 Future Feature Estimation
-
-Future WDI feature values are not available. The backend estimates future feature values using simple trend extrapolation from historical feature values.
-
-futureFeatureValue = trendModel.predict(futureYear)
-
-These estimated future features are passed into the selected ML model to generate population and GDP per capita forecasts.
-
-12.4 Log-Linear Fallback
-
-If too few rows or too few ML features are available, the backend falls back to a log-linear trend model:
-
-ln(y) = mx + b
-
-The forecast is converted back to the original scale:
-
-y = exp(mx + b)
-
-12.5 Data Cleaning and Missing Value Handling
-
-The backend prepares WDI data by:
-- Removing null values.
-- Removing invalid years.
-- Removing invalid numeric values.
-- Merging indicators by year.
-- Dropping indicators with too much missing data.
-- Dropping years with too many missing feature values.
-- Using limited forward-fill and backward-fill for short gaps.
-- Continuing with available optional features where possible.
-- Returning warnings for missing or dropped indicators.
-
-12.6 Forecast Generation
-
-The backend forecasts 5 years after the latest available WDI year:
-
-futureYear = latestYear + i
-
-Where i ranges from 1 to 5.
-
-Then:
-
-forecastValue = selectedModel.predict(futureYear)
-
-12.7 Growth Percentage Formula
-
-The five-year growth percentage is calculated as:
-
-growthPercentage = ((predictedValueInFiveYears - latestActualValue) / latestActualValue) * 100
-
-This formula is used for both population growth and GDP per capita growth.
-
-12.8 MAE Formula
-
-Mean Absolute Error measures the average absolute error between actual values and fitted model values:
-
-MAE = sum(abs(actualValue - predictedValue)) / n
-
-Lower MAE means the model predictions are closer to the historical values.
-
-12.9 RMSE Formula
-
-Root Mean Squared Error measures the square root of the average squared error:
-
-RMSE = sqrt(sum((actualValue - predictedValue)^2) / n)
-
-RMSE penalizes larger errors more strongly than MAE.
-
-12.10 R2 Formula
-
-R2 measures how much variance in the target is explained by the model:
-
-R2 = 1 - (sum((actualValue - predictedValue)^2) / sum((actualValue - meanActualValue)^2))
-
-12.11 Model Selection Formula
-
-Linear Regression and Random Forest are evaluated on recent holdout years. The selected model is:
-
-bestModel = model with minimum holdout RMSE
-
-This helps avoid a model that looks good across all old historical data but performs poorly on the most recent years.
-
-12.12 Missing Data Handling
-
-The prediction feature safely handles missing or incomplete data. If fewer than two valid data points are available, the app does not train a model and shows an unavailable state instead of crashing.
-
-12.13 Backend Response Contents
-
-Each prediction response includes:
-- Country code
-- Dataset name and provider
-- Target indicator
-- Model used
-- Features used
-- Features dropped
-- Missing data warnings
-- Historical actual series
-- Future forecast series
-- Latest actual value
-- Predicted value after 5 years
-- Growth percentage
-- MAE
-- RMSE
-- R2
-- Training years used
-- Data coverage summary
-
-
-13. SECURITY AND PRIVACY
-
-The application does not require user accounts, passwords, or private API keys. All data is fetched from public APIs. No personal user data is stored by the application.
-
-
-14. LIMITATIONS
-
-- Some countries may not have complete World Bank safety or economic data.
-- Some countries may not have enough valid World Bank population or GDP data for forecasting.
-- The browser-based model is still simpler than backend-trained Random Forest, XGBoost, Prophet, LSTM, or Transformer models.
-- The model cannot fully capture sudden shocks, policy changes, wars, pandemics, or complex nonlinear demographic and economic changes without extra explanatory variables.
-- UK Police local incident data is only available for Great Britain through the UK Police API.
-- Public APIs may rate limit, fail, or return incomplete data.
-- The application depends on internet access for live API data.
-- Large visualization libraries increase bundle size.
-
-
-15. TESTING AND VERIFICATION
-
-The project includes the following verification commands:
-
-- npm run typecheck
-  Runs TypeScript type checking.
-
-- npm run build
-  Creates a production build using Vite.
-
-- npm run dev
-  Starts both the FastAPI backend at http://127.0.0.1:8001 and the Vite frontend at http://127.0.0.1:5173.
-
-- npm run backend
-  Starts only the FastAPI backend at http://127.0.0.1:8001.
-
-- npm run frontend
-  Starts only the Vite frontend at http://127.0.0.1:5173.
-
-Recent verification showed:
-- TypeScript type checking passed.
-- Production build passed.
-- TailwindCSS compilation was fixed by adding the PostCSS configuration.
-- Backend syntax validation passed using Python compile checks.
-
-
-16. INSTALLATION AND RUNNING
-
-Prerequisites:
-- Node.js version 18 or higher
-- npm
-- Python 3.11 or higher
-- Internet connection
-
-Install dependencies:
-
-npm install
-
-Install backend dependencies:
-
-python -m pip install -r backend/requirements.txt
-
-Run full development stack:
-
-npm run dev
-
-Run backend only:
-
-npm run backend
-
-Run frontend only:
-
-npm run frontend
-
-Open in browser:
-
-http://127.0.0.1:5173
-
-Build for production:
-
-npm run build
-
-Preview production build:
-
-npm run preview
-
-Example backend API calls:
-
-GET http://127.0.0.1:8001/health
-GET http://127.0.0.1:8001/predict/population/IND
-GET http://127.0.0.1:8001/predict/gdp/IND
-GET http://127.0.0.1:8001/predict/all/IND
-
-
-16.1 Troubleshooting Guide
-
-Issue: ERR_CONNECTION_REFUSED in browser network tab
-- Cause: backend is not running or wrong backend port.
-- Fix: run npm run backend and verify http://127.0.0.1:8001/health.
-
-Issue: WinError 10013 / Errno 10048 while starting backend
-- Cause: port conflict or restricted binding.
-- Fix: stop previous backend process and restart backend on port 8001.
-
-Issue: {"detail":"Not Found"}
-- Cause: wrong backend route.
-- Fix: use /health, /predict/population/{ISO3}, /predict/gdp/{ISO3}, or /predict/all/{ISO3}.
-
-Issue: {"detail":"Not enough WDI target data ..."}
-- Cause: insufficient historical target data for the requested country.
-- Fix: use a country with stronger WDI coverage; frontend fallback may still render an estimated forecast.
-
-Issue: 502 / SSL upstream failures from World Bank
-- Cause: temporary World Bank API/network instability.
-- Fix: wait and retry; backend already includes retry behavior and endpoint fallback.
-
-
-17. FUTURE IMPROVEMENTS
-
-Possible future improvements include:
-
-- Add more global crime and safety indicators.
-- Add city-level analytics where public data is available.
-- Add search functionality for countries.
-- Add loading skeletons inside each chart panel.
-- Add better error messages for unavailable API data.
-- Add export options for charts and country reports.
-- Add code splitting to reduce production bundle size.
-- Add automated UI tests.
-- Add comparison mode for two or more countries.
-- Add XGBoost, Prophet, LSTM, Transformer models, or ARIMA.
-- Add confidence intervals for forecast values.
-
-
-18. CONCLUSION
-
-Urban Analytics Platform is a modern full-stack application for exploring global urban indicators through an interactive globe and analytics dashboard. It combines multiple public data sources and presents them using charts, KPI cards, country-specific dashboard sections, and machine learning forecasts.
-
-The project demonstrates frontend development, backend API development, geospatial visualization, API integration, state management, data transformation, chart-based analytics, missing data handling, and machine learning prediction modelling in a single application.
+  URBAN ANALYTICS PLATFORM - MASTER PROJECT SPECIFICATION
+
+  Version: 1.0
+  Last Updated: 2026-05-26
+  Project Root: D:\urban-analytics
+
+  1) EXECUTIVE SUMMARY
+
+  Urban Analytics Platform is a full-stack geospatial analytics system that visualizes country-level indicators on a 3D globe and dashboard. It combines public datasets (REST Countries, World Bank WDI, UK Police for GB sampling, Overpass, OpenAQ) and includes an ML-based forecasting module for population and GDP per capita.
+
+  Primary user flow:
+  1. User opens app and sees globe.
+  2. User selects country.
+  3. Dashboard loads KPIs/charts across tabs.
+  4. Predictions tab requests backend ML forecasts.
+  5. If backend is unavailable, frontend shows explicit fallback forecast state.
+
+  2) SYSTEM GOALS
+
+  - Provide globally scoped country analytics with chart-first presentation.
+  - Keep forecast logic transparent and auditable for dissertation/research use.
+  - Handle sparse WDI data robustly (missing indicators, missing years, unstable upstream API).
+  - Maintain modular architecture so frontend UI and prediction logic evolve independently.
+
+  3) HIGH-LEVEL ARCHITECTURE
+
+  Frontend:
+  - React 18 + TypeScript + Vite + TailwindCSS
+  - Zustand for UI/app state
+  - TanStack React Query for data fetching/caching
+  - Recharts for analytics and forecast visuals
+  - Globe.gl + MapLibre + Deck.gl for geospatial interaction
+
+  Backend:
+  - FastAPI (Python)
+  - pandas/numpy for preprocessing
+  - scikit-learn for ML models and evaluation
+  - requests for World Bank API access
+  - Uvicorn runtime
+
+  Design principle:
+  - Backend ML is authoritative for forecasts.
+  - Frontend fallback exists only for continuity when backend fails.
+
+  4) REPOSITORY STRUCTURE (FUNCTIONAL MAP)
+
+  backend/
+  - app.py: WDI fetch, cleaning, feature selection, model train/eval/select, prediction endpoints
+  - requirements.txt: backend dependencies
+
+  src/
+  - components/Sidebar/PredictionsTab.tsx: prediction UI, states, charts, warnings
+  - lib/prediction.ts: browser fallback forecasting helpers
+  - types/prediction.ts: strongly typed prediction contracts
+  - hooks/*: API hooks for other tabs
+  - store/useAppStore.ts: selected country/tab/global app state
+  - App.tsx: globe <-> dashboard routing by selected country
+
+  public/
+  - countries.geojson: country boundaries
+  - textures/*: local globe textures (used to avoid remote CORS texture failures)
+
+  5) FUNCTIONAL MODULES
+
+  5.1 Globe and Country Selection
+  - Interactive globe permits country picking.
+  - Selected country is stored globally in Zustand.
+  - Dashboard renders country-specific data from this selection.
+
+  5.2 Dashboard Tabs
+  - Overview
+  - Population
+  - Economy
+  - Crime and Safety
+  - Predictions
+
+  5.3 Crime and Safety Logic
+  - Global safety indicators: World Bank data.
+  - Great Britain enhancement: sampled UK Police street incidents when available.
+  - This prevents UK-only lock-in while still supporting local incident context.
+
+  5.4 Predictions Module
+  Targets:
+  - Population total (SP.POP.TOTL)
+  - GDP per capita (NY.GDP.PCAP.CD)
+
+  Forecast horizon:
+  - 5 years beyond latest available WDI year.
+
+  Outputs:
+  - Historical + forecast series
+  - KPI summary (latest actual, 5-year prediction, growth %)
+  - Model diagnostics (MAE, RMSE, R2, training years)
+  - Feature usage/drops + data quality warnings
+
+  6) DATA SOURCES AND INDICATORS
+
+  6.1 Core Providers
+  - REST Countries API: country metadata
+  - World Bank Indicators API (WDI): macro and social indicators, safety indicators, ML features/targets
+  - UK Police API: GB local incident sample
+  - Overpass API: transport/road context
+  - OpenAQ: air quality context
+
+  6.2 WDI Indicators for Prediction
+
+  Population target:
+  - SP.POP.TOTL
+
+  Population features:
+  - SP.POP.GROW
+  - SP.DYN.TFRT.IN
+  - SP.DYN.CBRT.IN
+  - SP.DYN.CDRT.IN
+  - SP.DYN.LE00.IN
+  - SM.POP.NETM
+  - SP.URB.TOTL.IN.ZS
+  - EN.POP.DNST
+
+  GDP per capita target:
+  - NY.GDP.PCAP.CD
+
+  GDP features:
+  - NY.GDP.MKTP.KD.ZG
+  - FP.CPI.TOTL.ZG
+  - SL.UEM.TOTL.ZS
+  - NE.TRD.GNFS.ZS
+  - BX.KLT.DINV.WD.GD.ZS
+  - IT.NET.USER.ZS
+  - SE.XPD.TOTL.GD.ZS
+  - SP.URB.TOTL.IN.ZS
+  - SP.DYN.LE00.IN
+
+  7) PREDICTION PIPELINE (BACKEND AUTHORITATIVE FLOW)
+
+  Step 1: Fetch WDI per indicator/year for selected ISO3 country.
+  Step 2: Build yearly panel dataset by merging target + features.
+  Step 3: Validate target coverage (minimum usable target points required).
+  Step 4: Missing-data handling:
+  - Drop indicators with excessive missingness.
+  - Drop years with excessive row missingness.
+  - Apply limited forward/backward fill where defensible.
+  Step 5: Time-ordered split (no random split for time series).
+  Step 6: Train baseline Linear Regression and main Random Forest Regressor.
+  Step 7: Evaluate on recent holdout with MAE, RMSE, R2.
+  Step 8: Select model with lower holdout RMSE.
+  Step 9: Estimate future feature values via trend extrapolation.
+  Step 10: Forecast next 5 years; emit warnings/coverage details.
+  Step 11: Cache result to reduce repeated upstream calls and latency.
+
+  8) MODELING DETAILS AND FORMULAS
+
+  8.1 Linear Regression
+  y = beta0 + beta1*x1 + ... + betan*xn
+
+  8.2 Random Forest Regressor
+  y_hat = (1 / T) * SUM(tree_i(x)) for i in 1..T
+
+  8.3 Growth Percentage
+  growth% = ((predicted_5y - latest_actual) / latest_actual) * 100
+
+  8.4 MAE
+  MAE = (1/n) * SUM(|y - y_hat|)
+
+  8.5 RMSE
+  RMSE = SQRT((1/n) * SUM((y - y_hat)^2))
+
+  8.6 R2
+  R2 = 1 - (SS_res / SS_tot)
+
+  8.7 Model selection rule
+  best_model = argmin(holdout_RMSE)
+
+  8.8 Fallback model conditions
+  If feature/row coverage is too weak for reliable ML, fallback trend logic is allowed with explicit warning flags.
+
+  9) BACKEND API CONTRACT
+
+  Base URL (dev):
+  - http://127.0.0.1:8001
+
+  Endpoints:
+  - GET /health
+  - GET /predict/population/{countryCode}
+  - GET /predict/gdp/{countryCode}
+  - GET /predict/all/{countryCode}
+
+  Expected prediction payload fields:
+  - countryCode
+  - datasetName ("World Development Indicators (WDI)")
+  - provider ("World Bank Open Data")
+  - targetIndicator
+  - modelUsed
+  - featuresUsed
+  - featuresDropped
+  - warnings
+  - historicalData
+  - forecastData
+  - latestActualValue
+  - predictedValueIn5Years
+  - growthPercentage
+  - mae
+  - rmse
+  - r2
+  - trainingYearsUsed
+  - dataCoverageSummary
+
+  Error semantics:
+  - 422 when target coverage is too low to train/evaluate
+  - 502 for upstream World Bank/API transport failures
+  - 404 for invalid route
+
+  10) FRONTEND BEHAVIORAL CONTRACT (PREDICTIONS TAB)
+
+  Loading state:
+  - Show clear ML loading status.
+
+  Success state:
+  - Render two charts (population and GDP per capita) with clear actual vs forecast separation.
+  - Render KPI cards and evaluation metrics.
+  - Render used/dropped features and warnings.
+
+  Fallback state:
+  - Display explicit message that backend is unavailable and browser fallback is in use.
+
+  Error state:
+  - Render concise actionable error content (status + reason where available).
+
+  No-data state:
+  - Show empty-state guidance when neither backend nor fallback can produce forecast.
+
+  11) RUNTIME AND SCRIPTS
+
+  Prerequisites:
+  - Node.js >= 18
+  - npm
+  - Python >= 3.11
+  - Internet access
+
+  Install:
+  - npm install
+  - python -m pip install -r backend/requirements.txt
+
+  Run:
+  - npm run dev        (frontend + backend)
+  - npm run frontend   (frontend only, default 5173)
+  - npm run backend    (backend only, default 8001)
+
+  Verification commands:
+  - npm run typecheck
+  - npm run build
+  - GET http://127.0.0.1:8001/health
+
+  12) KNOWN FAILURE MODES AND OPERATIONAL TROUBLESHOOTING
+
+  1. ERR_CONNECTION_REFUSED
+  - Cause: backend not running or wrong port
+  - Action: start backend, verify /health on 8001
+
+  2. WinError 10013 / Errno 10048
+  - Cause: port bind blocked/already in use
+  - Action: stop old process, reuse configured 8001
+
+  3. {"detail":"Not Found"}
+  - Cause: incorrect route
+  - Action: use documented endpoints exactly
+
+  4. {"detail":"Not enough WDI target data ..."}
+  - Cause: sparse target series for selected country/indicator
+  - Action: switch country or rely on explicit fallback behavior
+
+  5. 502 / SSL EOF / upstream instability
+  - Cause: transient World Bank/API transport failures
+  - Action: retry later; backend already applies retry/fallback URL strategy
+
+  13) NON-FUNCTIONAL REQUIREMENTS
+
+  - UI consistency: dark dashboard theme across tabs.
+  - Deterministic, typed data handling in TypeScript interfaces.
+  - Separation of concerns:
+    - backend/app.py owns ML pipeline
+    - frontend renders and explains outputs
+  - No paid APIs or private credentials required.
+  - Public API volatility is expected and handled defensively.
+
+  14) LIMITATIONS (FOR PROPOSAL HONESTY)
+
+  - Forecast quality is constrained by WDI completeness and reporting lag (latest available years are often ~2023/2024 depending on indicator/country).
+  - Random Forest cannot anticipate external structural shocks without exogenous forward features.
+  - Future feature extrapolation introduces uncertainty beyond short horizons.
+  - Country-to-country data coverage heterogeneity can cause uneven model reliability.
+
+  15) RECOMMENDED ACCEPTANCE CRITERIA
+
+  Minimum technical acceptance:
+  1. All existing tabs continue to work without regression.
+  2. Predictions tab renders population + GDP 5-year forecasts.
+  3. Backend model output includes MAE/RMSE/R2 and feature diagnostics.
+  4. Missing-data warnings are visible and understandable.
+  5. Backend unavailability yields controlled fallback state, not crash loops.
+  6. README and this file accurately match runnable scripts and ports.
+
+  16) PROPOSAL-GENERATION NOTES FOR ANOTHER AI
+
+  If this file is used to create a proposal/specification, the proposing AI should:
+  1. Treat backend ML as primary forecast source and frontend trend model as continuity fallback.
+  2. Preserve the defined API contract and error semantics.
+  3. Preserve time-ordered evaluation methodology (no random split claims).
+  4. Include explicit data-quality and coverage-risk statements.
+  5. Keep forecast horizon at 5 years unless scope expansion is approved.
+  6. Avoid promising policy-shock robustness without additional datasets/features.
+  7. Include deployment/ops plan for API instability handling and retries.
+
+  End of master specification.
