@@ -1,6 +1,32 @@
 const { spawn } = require('node:child_process')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const processes = []
+
+function loadLocalEnv() {
+  for (const fileName of ['.env.local', '.env']) {
+    const filePath = path.join(process.cwd(), fileName)
+    if (!fs.existsSync(filePath)) continue
+
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+
+      const separatorIndex = trimmed.indexOf('=')
+      if (separatorIndex === -1) continue
+
+      const key = trimmed.slice(0, separatorIndex).trim()
+      const rawValue = trimmed.slice(separatorIndex + 1).trim()
+      if (!key || process.env[key] !== undefined) continue
+
+      process.env[key] = rawValue.replace(/^['"]|['"]$/g, '')
+    }
+  }
+}
+
+loadLocalEnv()
 
 function run(name, command, args) {
   const child = spawn(command, args, {

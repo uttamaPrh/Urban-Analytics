@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
+import os
 import time
 
 import numpy as np
@@ -22,6 +23,9 @@ WORLD_BANK_URLS = [
     "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}",
 ]
 WORLD_BANK_RETRIES = 4
+REST_COUNTRIES_URL = "https://api.restcountries.com/countries/v5/codes.alpha_3/{country}"
+REST_COUNTRIES_TIMEOUT = 10
+REST_COUNTRIES_RETRIES = 3
 FORECAST_YEARS = 5
 MAX_FEATURE_MISSING_RATIO = 0.6
 MAX_ROW_MISSING_RATIO = 0.5
@@ -499,6 +503,126 @@ def cached_predict_gdp(country_code: str) -> dict[str, Any]:
     return predict(country_code, GDP_TARGET, GDP_FEATURES)
 
 
+@lru_cache(maxsize=256)
+def fetch_rest_country(country_code: str) -> Any:
+    country = country_code.upper()
+    api_key = os.getenv("REST_COUNTRIES_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="REST_COUNTRIES_API_KEY is not configured for the REST Countries v5 API.",
+        )
+
+    url = REST_COUNTRIES_URL.format(country=country)
+    last_error: requests.RequestException | None = None
+    response: requests.Response | None = None
+
+    for attempt in range(1, REST_COUNTRIES_RETRIES + 1):
+        try:
+            response = requests.get(
+                url,
+                timeout=REST_COUNTRIES_TIMEOUT,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "Connection": "close",
+                    "User-Agent": "urban-analytics-country-proxy/1.0",
+                },
+            )
+            break
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt < REST_COUNTRIES_RETRIES:
+                time.sleep(0.75 * attempt)
+
+    if response is None:
+        if isinstance(last_error, requests.Timeout):
+            raise HTTPException(
+                status_code=504,
+                detail=f"REST Countries request timed out for {country}.",
+            ) from last_error
+        raise HTTPException(
+            status_code=502,
+            detail=f"REST Countries API is unavailable after {REST_COUNTRIES_RETRIES} attempts: {last_error}",
+        ) from last_error
+
+    if response.status_code == 404:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Country profile not found for {country}.",
+        )
+    if not response.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "REST Countries API request failed with "
+                f"HTTP {response.status_code}."
+            ),
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="REST Countries API returned invalid JSON.",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=502,
+            detail="REST Countries API returned an unexpected response.",
+        )
+    if "errors" in payload:
+        errors = payload.get("errors")
+        message = "REST Countries API request failed."
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            message = str(errors[0].get("message") or message)
+        raise HTTPException(status_code=502, detail=message)
+
+    objects = payload.get("data", {}).get("objects")
+    if not isinstance(objects, list) or not objects:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Country profile not found for {country}.",
+        )
+
+    return [to_rest_country_v3_shape(item) for item in objects]
+
+
+def to_rest_country_v3_shape(country: dict[str, Any]) -> dict[str, Any]:
+    names = country.get("names") if isinstance(country.get("names"), dict) else {}
+    codes = country.get("codes") if isinstance(country.get("codes"), dict) else {}
+    area = country.get("area") if isinstance(country.get("area"), dict) else {}
+    flag = country.get("flag") if isinstance(country.get("flag"), dict) else {}
+    capitals = country.get("capitals")
+    capital_names = [
+        item.get("name")
+        for item in capitals
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    ] if isinstance(capitals, list) else None
+
+    return {
+        "name": {
+            "common": names.get("common"),
+            "official": names.get("official"),
+        },
+        "cca2": codes.get("alpha_2"),
+        "cca3": codes.get("alpha_3"),
+        "cioc": codes.get("cioc"),
+        "capital": capital_names,
+        "region": country.get("region"),
+        "subregion": country.get("subregion"),
+        "population": country.get("population"),
+        "area": area.get("kilometers"),
+        "flags": {
+            "png": flag.get("url_png"),
+            "svg": flag.get("url_svg"),
+        },
+        "borders": country.get("borders"),
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {
@@ -506,6 +630,11 @@ def health() -> dict[str, str]:
         "dataset_name": DATASET_NAME,
         "provider": PROVIDER,
     }
+
+
+@app.get("/country/{country_code}")
+def country(country_code: str) -> Any:
+    return fetch_rest_country(country_code)
 
 
 @app.get("/predict/population/{country_code}")

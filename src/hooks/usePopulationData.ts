@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { DataHookResult, RestCountry, WorldBankSeries } from '@/types'
 
+const API_BASE_URL = import.meta.env.VITE_PREDICTION_API_URL ?? 'http://127.0.0.1:8001'
+
 async function fetchRestCountry(code: string): Promise<RestCountry> {
-  const res = await fetch(`https://restcountries.com/v3.1/alpha/${code}`)
-  if (!res.ok) throw new Error('REST Countries failed')
+  const res = await fetch(`${API_BASE_URL}/country/${encodeURIComponent(code)}`)
+  if (!res.ok) throw new Error(`REST Countries proxy failed with HTTP ${res.status}`)
   const json = await res.json()
+  if (!Array.isArray(json) || !json[0]) throw new Error('REST Countries proxy returned an unexpected response')
   return json[0] as RestCountry
 }
 
@@ -46,7 +49,7 @@ export function usePopulationData(code: string | undefined): DataHookResult<Popu
         urbanPopulationSeries,
         gdpPerCapitaSeries
       ] = await Promise.all([
-        fetchRestCountry(code),
+        fetchRestCountry(code).catch(() => null),
         fetchWorldBank(wbCode, 'SP.POP.TOTL'),
         fetchWorldBank(wbCode, 'AG.SRF.TOTL.K2'),
         fetchWorldBank(wbCode, 'SP.URB.TOTL.IN.ZS'),
