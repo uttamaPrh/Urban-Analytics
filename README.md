@@ -354,13 +354,27 @@ Install backend dependencies:
 python -m pip install -r backend/requirements.txt
 ```
 
+Get a REST Countries v5 API key:
+
+1. Go to `https://restcountries.com/`.
+2. Open the REST Countries v5 API documentation or account dashboard.
+3. Create an account or sign in.
+4. Generate or copy a v5 API key.
+5. Keep the key private. It should only be stored in `.env.local`, not in frontend code or tracked files.
+
 Configure local environment variables:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Set `REST_COUNTRIES_API_KEY` in `.env.local`. This file is ignored by git. The `npm run dev` script loads `.env.local` automatically before starting FastAPI and Vite.
+Set `REST_COUNTRIES_API_KEY` in `.env.local`:
+
+```env
+REST_COUNTRIES_API_KEY=your_rest_countries_v5_key
+```
+
+This file is ignored by git. The `npm run dev` script loads `.env.local` automatically before starting FastAPI and Vite.
 
 Run the full development stack:
 

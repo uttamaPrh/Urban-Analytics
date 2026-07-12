@@ -244,6 +244,8 @@
   Install:
   - npm install
   - python -m pip install -r backend/requirements.txt
+  - get a REST Countries v5 API key from https://restcountries.com/
+  - create/sign in to the REST Countries account or dashboard and generate/copy a v5 key
   - copy .env.example to .env.local and set REST_COUNTRIES_API_KEY
 
   Run:
