@@ -18,7 +18,7 @@ Tech stack: Vite, React 18, TypeScript, TailwindCSS, Zustand, TanStack React Que
 - Predictions tab for five-year population and GDP per capita forecasts.
 - FastAPI machine learning backend using World Bank World Development Indicators.
 - Model evaluation with MAE, RMSE, R2, and number of training years.
-- Public API based data fetching with no paid APIs.
+- Public API based data fetching with a local backend proxy for authenticated country metadata.
 - Local-first texture assets for globe rendering (avoids remote CORS texture failures).
 
 ---
@@ -28,7 +28,7 @@ Tech stack: Vite, React 18, TypeScript, TailwindCSS, Zustand, TanStack React Que
 - Overview: headline KPIs and core trend charts.
 - Population: population trend, country profile, area, density, region, and subregion.
 - Economy: GDP per capita and urbanization trends.
-- Crime & Safety: global homicide rate, business crime impact, and local UK incident data where available.
+- Crime & Safety: global homicide rate, informal payments to officials, and local UK incident data where available.
 - Predictions: five-year forecasts for population and GDP per capita.
 
 ---
@@ -41,6 +41,8 @@ The Predictions tab forecasts:
 2. GDP per capita growth.
 
 The main prediction path uses a Python FastAPI backend that fetches World Bank World Development Indicators directly from the World Bank Indicators API. The React tab falls back to a browser-only trend model if the backend is unavailable.
+
+The same FastAPI backend also proxies REST Countries v5 country profile requests. This avoids browser CORS issues, keeps the REST Countries bearer token out of frontend code, and maps the v5 API response back to the existing `RestCountry` shape used by the React dashboard.
 
 Prediction code is separated from UI code:
 
@@ -273,7 +275,7 @@ The UI shows an error or empty state when forecast data is unavailable.
 
 | API | Purpose | Free | Authentication |
 | --- | --- | --- | --- |
-| REST Countries | Country profile, capital, region, area, population | Yes | No |
+| REST Countries v5 | Country profile, capital, region, area, population | Yes | Bearer token, stored server-side |
 | World Bank WDI | Population, GDP, urbanization, health, migration, trade, FDI, education, internet, safety indicators | Yes | No |
 | UK Police API | Street-level crime incidents in Great Britain | Yes | No |
 | OpenStreetMap Overpass | Road and traffic geospatial data | Yes | No |
@@ -352,6 +354,14 @@ Install backend dependencies:
 python -m pip install -r backend/requirements.txt
 ```
 
+Configure local environment variables:
+
+```bash
+cp .env.example .env.local
+```
+
+Set `REST_COUNTRIES_API_KEY` in `.env.local`. This file is ignored by git. The `npm run dev` script loads `.env.local` automatically before starting FastAPI and Vite.
+
 Run the full development stack:
 
 ```bash
@@ -399,6 +409,7 @@ npm run typecheck
 
 ```text
 GET http://127.0.0.1:8001/health
+GET http://127.0.0.1:8001/country/IND
 GET http://127.0.0.1:8001/predict/population/IND
 GET http://127.0.0.1:8001/predict/gdp/IND
 GET http://127.0.0.1:8001/predict/all/IND
@@ -426,10 +437,11 @@ Each prediction response includes:
 ## Development Notes
 
 - ML prediction logic is implemented in `backend/app.py`.
+- REST Countries v5 proxying and v5-to-frontend response mapping are implemented in `backend/app.py`.
 - Frontend fallback prediction logic is kept in `src/lib/prediction.ts`.
 - Prediction UI is isolated in `src/components/Sidebar/PredictionsTab.tsx`.
-- Existing population and GDP data fetching remains in `usePopulationData.ts`.
-- No paid APIs or private keys are required.
+- Existing population, GDP, and local country-profile fetching remains in `usePopulationData.ts`.
+- REST Countries v5 requires `REST_COUNTRIES_API_KEY`; keep it in `.env.local`, never in tracked source.
 - The backend compares Linear Regression and Random Forest Regressor because Linear Regression is an interpretable baseline and Random Forest can capture nonlinear relationships among WDI indicators.
 
 ---
@@ -461,6 +473,7 @@ Cause: wrong URL path.
 Fix:
 - Use valid endpoints:
   - `/health`
+  - `/country/{ISO3}`
   - `/predict/population/{ISO3}`
   - `/predict/gdp/{ISO3}`
   - `/predict/all/{ISO3}`
@@ -482,6 +495,24 @@ Fix:
 - Retry after a short delay.
 - Confirm internet access.
 - Backend includes retry/fallback URL handling, but persistent upstream outages can still fail.
+
+### 6) REST Countries profile is unavailable
+
+Cause: missing `REST_COUNTRIES_API_KEY`, expired token, or REST Countries upstream failure.
+
+Fix:
+- Confirm `.env.local` contains `REST_COUNTRIES_API_KEY=...`.
+- Restart `npm run dev` after changing `.env.local`.
+- Check `http://127.0.0.1:8001/country/CAN`.
+- Country profile failure is isolated; World Bank population, GDP, and prediction data can still load.
+
+### 7) World Bank says an indicator was deleted or archived
+
+Cause: World Bank can remove or archive individual indicator codes.
+
+Fix:
+- Replace the indicator with a currently available World Bank indicator.
+- This does not affect the prediction endpoints unless one of the prediction WDI feature codes is removed.
 
 ---
 

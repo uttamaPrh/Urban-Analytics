@@ -19,7 +19,16 @@ async function fetchWorldBank(code: string, indicator: string): Promise<WorldBan
   const res = await fetch(`https://api.worldbank.org/v2/country/${code}/indicator/${indicator}?format=json&per_page=500`)
   if (!res.ok) throw new Error('World Bank failed')
   const json = await res.json()
+  if (Array.isArray(json) && json[0]?.message) throw new Error('World Bank indicator unavailable')
   return (json[1] ?? []) as WorldBankSeries
+}
+
+async function fetchOptionalWorldBank(code: string, indicator: string): Promise<WorldBankSeries> {
+  try {
+    return await fetchWorldBank(code, indicator)
+  } catch {
+    return []
+  }
 }
 
 function toIndicator(
@@ -48,9 +57,9 @@ function toIndicator(
 
 async function fetchGlobalCrimeIndicators(code: string): Promise<GlobalCrimeIndicator[]> {
   const wbCode = code.toLowerCase()
-  const [homicideSeries, theftLossSeries] = await Promise.all([
-    fetchWorldBank(wbCode, 'VC.IHR.PSRC.P5'),
-    fetchWorldBank(wbCode, 'IC.FRM.CRIM.ZS')
+  const [homicideSeries, informalPaymentsSeries] = await Promise.all([
+    fetchOptionalWorldBank(wbCode, 'VC.IHR.PSRC.P5'),
+    fetchOptionalWorldBank(wbCode, 'IC.FRM.CORR.ZS')
   ])
 
   return [
@@ -61,10 +70,10 @@ async function fetchGlobalCrimeIndicators(code: string): Promise<GlobalCrimeIndi
       homicideSeries
     ),
     toIndicator(
-      'IC.FRM.CRIM.ZS',
-      'Business losses from crime',
-      '% of annual sales',
-      theftLossSeries
+      'IC.FRM.CORR.ZS',
+      'Informal payments to officials',
+      '% of firms',
+      informalPaymentsSeries
     )
   ]
 }

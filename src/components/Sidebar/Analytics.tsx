@@ -398,7 +398,7 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
                     <EmptyChart label="No homicide trend available for this country" />
                   )}
                 </ChartPanel>
-                <ChartPanel title="Business Crime Impact">
+                <ChartPanel title="Informal Payments to Officials">
                   {businessCrimeTrend.length > 1 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={businessCrimeTrend}>
@@ -410,7 +410,7 @@ export default function Analytics({ country }: AnalyticsProps): JSX.Element {
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <EmptyChart label="No business crime trend available for this country" />
+                    <EmptyChart label="No informal payments trend available for this country" />
                   )}
                 </ChartPanel>
                 <div className="rounded-lg border border-slate-700/70 bg-slate-900/70 p-5 lg:col-span-2">

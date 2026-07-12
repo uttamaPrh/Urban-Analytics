@@ -1,12 +1,12 @@
   URBAN ANALYTICS PLATFORM - MASTER PROJECT SPECIFICATION
 
   Version: 1.0
-  Last Updated: 2026-05-26
+  Last Updated: 2026-07-12
   Project Root: D:\urban-analytics
 
   1) EXECUTIVE SUMMARY
 
-  Urban Analytics Platform is a full-stack geospatial analytics system that visualizes country-level indicators on a 3D globe and dashboard. It combines public datasets (REST Countries, World Bank WDI, UK Police for GB sampling, Overpass, OpenAQ) and includes an ML-based forecasting module for population and GDP per capita.
+  Urban Analytics Platform is a full-stack geospatial analytics system that visualizes country-level indicators on a 3D globe and dashboard. It combines REST Countries v5 country metadata, World Bank WDI, UK Police for GB sampling, Overpass, OpenAQ, and includes an ML-based forecasting module for population and GDP per capita.
 
   Primary user flow:
   1. User opens app and sees globe.
@@ -35,7 +35,7 @@
   - FastAPI (Python)
   - pandas/numpy for preprocessing
   - scikit-learn for ML models and evaluation
-  - requests for World Bank API access
+  - requests for World Bank API access and REST Countries v5 backend proxying
   - Uvicorn runtime
 
   Design principle:
@@ -45,7 +45,7 @@
   4) REPOSITORY STRUCTURE (FUNCTIONAL MAP)
 
   backend/
-  - app.py: WDI fetch, cleaning, feature selection, model train/eval/select, prediction endpoints
+  - app.py: WDI fetch, REST Countries v5 proxy, cleaning, feature selection, model train/eval/select, prediction endpoints
   - requirements.txt: backend dependencies
 
   src/
@@ -76,6 +76,7 @@
 
   5.3 Crime and Safety Logic
   - Global safety indicators: World Bank data.
+  - Current global indicators are intentional homicide rate (VC.IHR.PSRC.P5) and informal payments to public officials (IC.FRM.CORR.ZS).
   - Great Britain enhancement: sampled UK Police street incidents when available.
   - This prevents UK-only lock-in while still supporting local incident context.
 
@@ -96,7 +97,7 @@
   6) DATA SOURCES AND INDICATORS
 
   6.1 Core Providers
-  - REST Countries API: country metadata
+  - REST Countries v5 API: authenticated country metadata, proxied by FastAPI to avoid browser CORS and keep bearer token server-side
   - World Bank Indicators API (WDI): macro and social indicators, safety indicators, ML features/targets
   - UK Police API: GB local incident sample
   - Overpass API: transport/road context
@@ -181,6 +182,7 @@
 
   Endpoints:
   - GET /health
+  - GET /country/{countryCode}
   - GET /predict/population/{countryCode}
   - GET /predict/gdp/{countryCode}
   - GET /predict/all/{countryCode}
@@ -208,6 +210,7 @@
   Error semantics:
   - 422 when target coverage is too low to train/evaluate
   - 502 for upstream World Bank/API transport failures
+  - 503 when REST_COUNTRIES_API_KEY is missing for /country
   - 404 for invalid route
 
   10) FRONTEND BEHAVIORAL CONTRACT (PREDICTIONS TAB)
@@ -236,10 +239,12 @@
   - npm
   - Python >= 3.11
   - Internet access
+  - REST_COUNTRIES_API_KEY in .env.local for country profile metadata
 
   Install:
   - npm install
   - python -m pip install -r backend/requirements.txt
+  - copy .env.example to .env.local and set REST_COUNTRIES_API_KEY
 
   Run:
   - npm run dev        (frontend + backend)
@@ -250,6 +255,7 @@
   - npm run typecheck
   - npm run build
   - GET http://127.0.0.1:8001/health
+  - GET http://127.0.0.1:8001/country/CAN
 
   12) KNOWN FAILURE MODES AND OPERATIONAL TROUBLESHOOTING
 
@@ -273,6 +279,15 @@
   - Cause: transient World Bank/API transport failures
   - Action: retry later; backend already applies retry/fallback URL strategy
 
+  6. REST Countries v5 profile unavailable
+  - Cause: missing/expired REST_COUNTRIES_API_KEY or upstream REST Countries failure
+  - Action: confirm .env.local, restart npm run dev, test /country/CAN
+  - Impact: country profile may be null, but World Bank data can still load
+
+  7. World Bank indicator deleted/archived
+  - Cause: World Bank removed or archived an indicator code
+  - Action: replace the affected indicator with a currently available WDI code
+
   13) NON-FUNCTIONAL REQUIREMENTS
 
   - UI consistency: dark dashboard theme across tabs.
@@ -280,7 +295,7 @@
   - Separation of concerns:
     - backend/app.py owns ML pipeline
     - frontend renders and explains outputs
-  - No paid APIs or private credentials required.
+  - Private REST Countries credentials stay in ignored .env.local and are never sent to frontend code.
   - Public API volatility is expected and handled defensively.
 
   14) LIMITATIONS (FOR PROPOSAL HONESTY)
