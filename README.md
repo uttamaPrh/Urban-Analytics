@@ -42,7 +42,18 @@ The Predictions tab forecasts:
 
 The main prediction path uses a Python FastAPI backend that fetches World Bank World Development Indicators directly from the World Bank Indicators API. The React tab falls back to a browser-only trend model if the backend is unavailable.
 
-The same FastAPI backend also proxies REST Countries v5 country profile requests. This avoids browser CORS issues, keeps the REST Countries bearer token out of frontend code, and maps the v5 API response back to the existing `RestCountry` shape used by the React dashboard.
+The same FastAPI backend also proxies REST Countries v5 country profile requests. This avoids browser CORS issues, keeps the REST Countries bearer token out of frontend code, and **automatically maps the v5 API response back to the v3 response shape** used by the React dashboard (see `to_rest_country_v3_shape()` in `backend/app.py`). The mapping includes:
+
+- Country names (common and official)
+- Country codes (ISO 2-letter, 3-letter, CIOC)
+- Capital city/cities
+- Region and subregion
+- Population
+- Area (square kilometers)
+- Flag URLs (PNG and SVG)
+- Bordering countries
+
+This ensures compatibility without breaking the existing frontend while leveraging the latest REST Countries v5 API.
 
 Prediction code is separated from UI code:
 
@@ -53,15 +64,16 @@ Prediction code is separated from UI code:
 
 Backend model strategy:
 
-1. Fetch WDI indicators by country and indicator code.
-2. Merge indicators by year.
-3. Drop features and years with too much missing data.
-4. Fill short gaps with forward-fill/backward-fill.
-5. Train models using time-ordered data.
+1. Fetch WDI indicators by country and indicator code (with automatic retry and dual-endpoint fallback).
+2. Merge indicators by year via concurrent requests (up to 8 parallel workers).
+3. Drop features and years with too much missing data (>60% threshold for features, >50% for rows).
+4. Fill short gaps with forward-fill/backward-fill (limited to 2 periods to avoid over-imputation).
+5. Train models using time-ordered data with engineered features (year and lagged target values).
 6. Compare Linear Regression and Random Forest Regressor using recent holdout RMSE.
 7. Select the better model and forecast the next five years.
 8. Estimate future feature values using simple trend extrapolation.
-9. Cache country prediction responses to reduce repeated network load.
+9. Apply continuity guards and forecast range caps to prevent implausible jumps.
+10. Cache predictions at fetch level (indicator data, maxsize=1024) and at model level (predictions, maxsize=256).
 
 Frontend fallback strategy:
 
@@ -72,6 +84,7 @@ Frontend fallback strategy:
 The backend is the preferred ML forecast. The TypeScript fallback exists only to keep the dashboard usable when the Python service is not running.
 
 Important interpretation note:
+
 - If the backend is reachable and returns success, the dashboard shows backend ML output.
 - If backend calls fail (network/server/API errors), the dashboard explicitly shows fallback status.
 
@@ -81,7 +94,20 @@ Dataset name: World Development Indicators (WDI)
 
 Provider: World Bank Open Data
 
-Main API: World Bank Indicators API
+Main API: World Bank Indicators API v2
+
+API Endpoints:
+- `http://api.worldbank.org/v2/country/{country}/indicator/{indicator}`
+- `https://api.worldbank.org/v2/country/{country}/indicator/{indicator}` (fallback)
+
+Resiliency & Performance:
+- Dual URL support for HTTP/HTTPS redundancy
+- Automatic retry logic: 4 attempts with exponential backoff (0.75s × attempt)
+- Request timeout: 30 seconds
+- LRU cache at fetch level (maxsize=1024)
+- Concurrent fetching with ThreadPoolExecutor (up to 8 workers for parallel requests)
+- Prediction-level caching (maxsize=256) to reduce repeated network load
+- Response format: JSON with up to 20,000 records per page
 
 ### WDI Indicators Used
 
@@ -273,14 +299,14 @@ The UI shows an error or empty state when forecast data is unavailable.
 
 ## Data Sources
 
-| API | Purpose | Free | Authentication |
-| --- | --- | --- | --- |
-| REST Countries v5 | Country profile, capital, region, area, population | Yes | Bearer token, stored server-side |
-| World Bank WDI | Population, GDP, urbanization, health, migration, trade, FDI, education, internet, safety indicators | Yes | No |
-| UK Police API | Street-level crime incidents in Great Britain | Yes | No |
-| OpenStreetMap Overpass | Road and traffic geospatial data | Yes | No |
-| OpenAQ | Air quality locations and measurements | Yes | No |
-| Natural Earth / GeoJSON | Country boundaries | Yes | No |
+| API                     | Purpose                                                                                              | Free | Authentication                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- | ---- | -------------------------------- |
+| REST Countries v5       | Country profile, capital, region, area, population (API v5 with v3 response shape mapping)              | Yes  | Bearer token, stored server-side |
+| World Bank WDI          | Population, GDP, urbanization, health, migration, trade, FDI, education, internet, safety indicators | Yes  | No                               |
+| UK Police API           | Street-level crime incidents in Great Britain                                                        | Yes  | No                               |
+| OpenStreetMap Overpass  | Road and traffic geospatial data                                                                     | Yes  | No                               |
+| OpenAQ                  | Air quality locations and measurements                                                               | Yes  | No                               |
+| Natural Earth / GeoJSON | Country boundaries                                                                                   | Yes  | No                               |
 
 ---
 
@@ -386,7 +412,7 @@ This starts both services:
 
 ```text
 Frontend: http://127.0.0.1:5173
-Backend:  http://127.0.0.1:8001
+Backend:  http://127.0.0.1:8000
 ```
 
 Run only the backend:
@@ -422,43 +448,77 @@ npm run typecheck
 ### Example API Calls
 
 ```text
-GET http://127.0.0.1:8001/health
-GET http://127.0.0.1:8001/country/IND
-GET http://127.0.0.1:8001/predict/population/IND
-GET http://127.0.0.1:8001/predict/gdp/IND
-GET http://127.0.0.1:8001/predict/all/IND
+GET http://127.0.0.1:8000/health
+        Returns: { status: ok, dataset_name, provider }
+
+GET http://127.0.0.1:8000/country/IND
+        Returns: Country profile from REST Countries v5 (mapped to v3 shape)
+
+GET http://127.0.0.1:8000/predict/population/IND
+        Returns: Population forecast with ML model details
+
+GET http://127.0.0.1:8000/predict/gdp/IND
+        Returns: GDP per capita forecast with ML model details
+
+GET http://127.0.0.1:8000/predict/all/IND
+        Returns: Both population and GDP predictions (concurrent, faster load)
 ```
 
 Each prediction response includes:
 
 - Country code
 - Dataset name and provider
-- Target indicator
-- Model used
-- Features used and dropped
-- Missing data warnings
-- Historical actual data
-- Predicted future data
-- Latest actual value
-- Predicted value after five years
+- Target indicator and label
+- Model used (Linear Regression or Random Forest Regressor)
+- Features used (WDI indicator codes) and features dropped with reasons
+- Missing data warnings and data coverage summary
+- Historical actual data points (year, value pairs)
+- Predicted future data (5-year forecast with year, value pairs)
+- Latest actual value and predicted value after five years
 - Growth percentage
-- MAE, RMSE, and R2
-- Training years used
-- Data coverage summary
+- MAE, RMSE, and R2 score
+- Training years used and data coverage breakdown
+
+Note: Responses are cached at multiple levels:
+- WDI indicator fetch level (1024 entries)
+- Prediction model level (256 country predictions)
+- This reduces latency for repeated country queries
+
+---
+
+## Performance & Reliability
+
+### API Resilience
+- **Dual endpoint fallback:** HTTP and HTTPS URLs for World Bank API
+- **Automatic retry logic:** 4 attempts per request with exponential backoff (0.75s × attempt)
+- **Request timeout:** 30 seconds for WDI, 10 seconds for REST Countries
+- **REST Countries retry:** 3 automatic retries before failing
+- **Concurrent fetching:** Up to 8 parallel workers to fetch multiple WDI indicators simultaneously
+
+### Caching Strategy
+- **Fetch-level cache (WDI indicators):** LRU cache with 1024 entries to cache raw indicator data points
+- **Prediction-level cache:** LRU cache with 256 entries to cache complete ML prediction results
+- **Benefits:** Repeated queries for the same country return cached results instantly, reducing network load and improving dashboard responsiveness
+
+### Response Mapping
+- **REST Countries v5 → v3 shape:** Backend automatically maps modern v5 API responses to the v3 schema used by the frontend, ensuring compatibility and simplifying frontend logic
 
 ---
 
 ## Development Notes
 
-- ML prediction logic is implemented in `backend/app.py`.
-- REST Countries v5 proxying and v5-to-frontend response mapping are implemented in `backend/app.py`.
-- Frontend fallback prediction logic is kept in `src/lib/prediction.ts`.
-- Prediction UI is isolated in `src/components/Sidebar/PredictionsTab.tsx`.
-- Existing population, GDP, and local country-profile fetching remains in `usePopulationData.ts`.
-- REST Countries v5 requires `REST_COUNTRIES_API_KEY`; keep it in `.env.local`, never in tracked source.
-- The backend compares Linear Regression and Random Forest Regressor because Linear Regression is an interpretable baseline and Random Forest can capture nonlinear relationships among WDI indicators.
+- **WDI API:** Still uses World Bank Indicators API v2 with dual HTTP/HTTPS support and automatic retry logic (4 attempts with exponential backoff).
+- **ML prediction logic:** Implemented in `backend/app.py` with scikit-learn models (Linear Regression and Random Forest).
+- **REST Countries integration:** Backend proxies v5 API with automatic v3 shape mapping (`to_rest_country_v3_shape()` function).
+- **Caching:** Multi-level LRU caching at fetch level (1024 entries) and prediction level (256 entries) for performance.
+- **Concurrency:** ThreadPoolExecutor with up to 8 workers for parallel WDI indicator fetching during model training.
+- **Frontend fallback prediction:** Kept in `src/lib/prediction.ts` for when backend is unavailable.
+- **Prediction UI isolation:** Isolated in `src/components/Sidebar/PredictionsTab.tsx` for maintainability.
+- **Existing data sources:** Population, GDP, and country-profile fetching remains in `usePopulationData.ts` and other hooks.
+- **REST Countries token:** Required `REST_COUNTRIES_API_KEY`; keep it in `.env.local`, never in tracked source.
+- **Model selection:** Linear Regression is an interpretable baseline; Random Forest captures nonlinear relationships among WDI indicators. Best model is selected per country based on holdout RMSE.
 
----
+
 
 ## Troubleshooting
 
@@ -467,17 +527,23 @@ Each prediction response includes:
 Cause: FastAPI backend is not running (or wrong port).
 
 Fix:
-- Start backend: `npm run backend`
+
+- Start backend: `npm run backend` (or `npm run dev` to start both frontend + backend)
 - Check health: `http://127.0.0.1:8001/health`
+- Verify backend is listening: `netstat -an | findstr :8001` (Windows) or `lsof -i :8001` (Mac/Linux)
 - Ensure frontend is calling `127.0.0.1:8001` (not `8000`).
+- Check that no other process is occupying port 8001.
 
 ### 2) `WinError 10013` or `Errno 10048` on backend start
 
-Cause: port already in use or restricted.
+Cause: port 8001 already in use or restricted by firewall/admin settings.
 
 Fix:
-- Keep backend on `8001` as configured.
-- Stop previous Python/Uvicorn process using that port.
+
+- Keep backend on `8001` as configured in the project.
+- Stop previous Python/Uvicorn process: `taskkill /F /IM python.exe` (Windows, may affect other Python apps) or use Task Manager to end the process.
+- Check if firewall is blocking: Windows Defender Firewall > Allow an app through firewall > add Python.
+- Clear the port: Kill any process on 8001 and wait 30 seconds before retrying.
 - Re-run: `npm run backend`
 
 ### 3) Backend returns `{"detail":"Not Found"}`
@@ -485,6 +551,7 @@ Fix:
 Cause: wrong URL path.
 
 Fix:
+
 - Use valid endpoints:
   - `/health`
   - `/country/{ISO3}`
@@ -497,34 +564,43 @@ Fix:
 Cause: insufficient historical target points for that country/indicator.
 
 Fix:
+
 - Try another country with better WDI coverage.
 - The frontend will show fallback forecast when backend ML cannot be trained.
 - Check `warnings` and `dataCoverageSummary` in backend response.
 
 ### 5) `502` / World Bank SSL or upstream API errors
 
-Cause: temporary upstream World Bank API/network issue.
+Cause: temporary upstream World Bank API/network issue or SSL certificate problems.
 
 Fix:
-- Retry after a short delay.
-- Confirm internet access.
-- Backend includes retry/fallback URL handling, but persistent upstream outages can still fail.
 
-### 6) REST Countries profile is unavailable
+- **Automatic retries:** Backend automatically retries failed WDI requests up to 4 times with exponential backoff (0.75s, 1.5s, 2.25s delays).
+- **Dual URL fallback:** The backend tries both HTTP and HTTPS endpoints before giving up.
+- Manual retry after a few seconds.
+- Confirm internet access and DNS resolution: `ping api.worldbank.org`
+- Check for upstream issues: Visit [World Bank Open Data status page](https://data.worldbank.org/).
+- If the issue persists, the frontend will show a fallback forecast using browser-based trend models (see `src/lib/prediction.ts`).
 
-Cause: missing `REST_COUNTRIES_API_KEY`, expired token, or REST Countries upstream failure.
+### 6) REST Countries v5 profile is unavailable
+
+Cause: missing `REST_COUNTRIES_API_KEY`, expired/invalid token, or REST Countries upstream failure.
 
 Fix:
-- Confirm `.env.local` contains `REST_COUNTRIES_API_KEY=...`.
-- Restart `npm run dev` after changing `.env.local`.
-- Check `http://127.0.0.1:8001/country/CAN`.
-- Country profile failure is isolated; World Bank population, GDP, and prediction data can still load.
+
+- **Generate/refresh token:** Log into [REST Countries v5 dashboard](https://restcountries.com/) and generate a new v5 API key.
+- **Update `.env.local`:** Confirm it contains `REST_COUNTRIES_API_KEY=your_actual_key` (no quotes).
+- **Restart both services:** `npm run dev` (or restart both frontend and backend separately) after changing `.env.local`.
+- **Test endpoint:** `http://127.0.0.1:8001/country/CAN` should return country profile in v3 response shape (internally mapped from v5).
+- **Retry logic:** Backend automatically retries REST Countries requests 3 times before giving up.
+- **Isolation:** Country profile failure is isolated from World Bank WDI and prediction data; population, GDP, and predictions can still load without the profile.
 
 ### 7) World Bank says an indicator was deleted or archived
 
 Cause: World Bank can remove or archive individual indicator codes.
 
 Fix:
+
 - Replace the indicator with a currently available World Bank indicator.
 - This does not affect the prediction endpoints unless one of the prediction WDI feature codes is removed.
 

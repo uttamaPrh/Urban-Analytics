@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const { spawn, spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const UVICORN_ARGS = [
   "-m",
@@ -10,8 +12,30 @@ const UVICORN_ARGS = [
   "--host",
   "127.0.0.1",
   "--port",
-  "8001",
+  process.env.BACKEND_PORT || "8000",
 ];
+
+function loadLocalEnv() {
+  for (const fileName of [".env.local", ".env"]) {
+    const filePath = path.join(process.cwd(), fileName);
+    if (!fs.existsSync(filePath)) continue;
+
+    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const separatorIndex = trimmed.indexOf("=");
+      if (separatorIndex === -1) continue;
+
+      const key = trimmed.slice(0, separatorIndex).trim();
+      const rawValue = trimmed.slice(separatorIndex + 1).trim();
+      if (!key || process.env[key] !== undefined) continue;
+
+      process.env[key] = rawValue.replace(/^['"]|['"]$/g, "");
+    }
+  }
+}
 
 function commandExists(command, args = ["--version"]) {
   const check = spawnSync(command, args, {
@@ -44,6 +68,7 @@ function resolvePythonCommand() {
 }
 
 function startBackend() {
+  loadLocalEnv();
   const { command, args } = resolvePythonCommand();
   const child = spawn(command, [...args, ...UVICORN_ARGS], {
     stdio: "inherit",

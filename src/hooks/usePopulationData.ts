@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { DataHookResult, RestCountry, WorldBankSeries } from '@/types'
 
-const API_BASE_URL = import.meta.env.VITE_PREDICTION_API_URL ?? 'http://127.0.0.1:8001'
+const API_BASE_URL = import.meta.env.VITE_PREDICTION_API_URL ?? 'http://127.0.0.1:8000'
 
 async function fetchRestCountry(code: string): Promise<RestCountry> {
   const res = await fetch(`${API_BASE_URL}/country/${encodeURIComponent(code)}`)

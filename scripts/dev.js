@@ -35,7 +35,7 @@ function run(name, command, args) {
     stdio: 'inherit',
     env: {
       ...process.env,
-      VITE_PREDICTION_API_URL: process.env.VITE_PREDICTION_API_URL || 'http://127.0.0.1:8001'
+      VITE_PREDICTION_API_URL: process.env.VITE_PREDICTION_API_URL || 'http://127.0.0.1:8000'
     }
   })
 
@@ -72,7 +72,7 @@ run('backend', 'python', [
   '--host',
   '127.0.0.1',
   '--port',
-  '8001'
+  process.env.BACKEND_PORT || '8000'
 ])
 
 run('frontend', 'vite', ['--host', '127.0.0.1'])
