@@ -37,11 +37,19 @@ function toIndicator(
   unit: string,
   series: WorldBankSeries
 ): GlobalCrimeIndicator {
-  const cleanSeries = series
-    .filter((point) => point.value !== null)
-    .map((point) => ({ year: point.date, value: Number(point.value) }))
-    .filter((point) => Number.isFinite(point.value))
-    .sort((a, b) => Number(a.year) - Number(b.year))
+  const cleanSeries: Array<{ year: string; value: number }> = []
+
+  for (let index = 0; index < series.length; index += 1) {
+    const point = series[index]
+    if (point.value === null) continue
+
+    const value = Number(point.value)
+    if (!Number.isFinite(value)) continue
+
+    cleanSeries.push({ year: point.date, value })
+  }
+
+  cleanSeries.sort((a, b) => Number(a.year) - Number(b.year))
 
   const latest = cleanSeries[cleanSeries.length - 1]
 
@@ -112,16 +120,20 @@ export function useCrimeData(
           d.setMonth(d.getMonth() - months)
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
         })()
-        const results: PoliceCrimeItem[] = []
-        for (const lat of lats) {
-          for (const lng of lngs) {
-            const r = await fetchCrimes(lat, lng, date)
-            for (const item of r) results.push(item)
+        const requests: Promise<PoliceCrimeItem[]>[] = []
+        for (let latIndex = 0; latIndex < lats.length; latIndex += 1) {
+          for (let lngIndex = 0; lngIndex < lngs.length; lngIndex += 1) {
+            requests.push(fetchCrimes(lats[latIndex], lngs[lngIndex], date).catch(() => []))
           }
         }
-        // dedupe by id
+
+        const batches = await Promise.all(requests)
         const map = new Map<string, PoliceCrimeItem>()
-        results.forEach((it) => map.set(it.id, it))
+        for (const batch of batches) {
+          for (const item of batch) {
+            map.set(item.id, item)
+          }
+        }
         return {
           incidents: Array.from(map.values()),
           indicators,

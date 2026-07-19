@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import { Deck } from 'deck.gl/typed'
 import useAppStore from '@/store/useAppStore'
@@ -7,7 +7,7 @@ import { useTrafficData } from '@/hooks/useTrafficData'
 import { useCrimeData } from '@/hooks/useCrimeData'
 import { useAQIData } from '@/hooks/useAQIData'
 import { useCountriesGeoJSON } from '@/hooks/useCountriesGeoJSON'
-import { dbscan } from '@/lib/clustering'
+import { useTrafficClusters } from '@/hooks/useTrafficClusters'
 import { buildLayers } from './LayerFactory'
 
 interface BaseMapProps {
@@ -28,6 +28,52 @@ export default function BaseMap({ bbox }: BaseMapProps): JSX.Element {
   const crimeData = useCrimeData(bbox, 3, country?.code)
   const aqiData = useAQIData(bbox)
   const countriesGeoJSON = useCountriesGeoJSON()
+
+  const trafficPoints = useMemo(() => trafficData.data ?? [], [trafficData.data])
+  const trafficLayerPoints = useMemo(() => {
+    if (!trafficData.data) return []
+
+    const points = new Array(trafficData.data.length)
+    for (let index = 0; index < trafficData.data.length; index += 1) {
+      const datum = trafficData.data[index]
+      points[index] = {
+        position: [datum.lng, datum.lat] as [number, number],
+        id: String(datum.lat + datum.lng),
+      }
+    }
+    return points
+  }, [trafficData.data])
+
+  const trafficClusters = useTrafficClusters(trafficPoints, 0.5, 5)
+
+  const crimeLayerPoints = useMemo(() => {
+    if (!crimeData.data) return []
+
+    const points = new Array(crimeData.data.incidents.length)
+    for (let index = 0; index < crimeData.data.incidents.length; index += 1) {
+      const incident = crimeData.data.incidents[index]
+      points[index] = {
+        position: [parseFloat(incident.location.longitude), parseFloat(incident.location.latitude)] as [number, number],
+        id: incident.id,
+      }
+    }
+    return points
+  }, [crimeData.data])
+
+  const aqiLayerPoints = useMemo(() => {
+    if (!aqiData.data) return []
+
+    const points = new Array(aqiData.data.length)
+    for (let index = 0; index < aqiData.data.length; index += 1) {
+      const station = aqiData.data[index]
+      points[index] = {
+        position: [station.coordinates?.longitude ?? 0, station.coordinates?.latitude ?? 0] as [number, number],
+        value: station.measurements?.[0]?.value ?? 0,
+        id: String(station.id),
+      }
+    }
+    return points
+  }, [aqiData.data])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -115,22 +161,12 @@ export default function BaseMap({ bbox }: BaseMapProps): JSX.Element {
 
     // Prepare data based on active tab
     if (activeTab === 'traffic' && trafficData.data) {
-      points = trafficData.data.map((d: any) => ({
-        position: [d.lng, d.lat] as [number, number],
-        id: String(d.lat + d.lng)
-      }))
-      clusters = dbscan(trafficData.data.map(d => ({ lat: d.lat, lng: d.lng })), 0.5, 5)
+      points = trafficLayerPoints
+      clusters = trafficClusters.clusters
     } else if (activeTab === 'crime' && crimeData.data) {
-      points = crimeData.data.incidents.map((d) => ({
-        position: [parseFloat(d.location.longitude), parseFloat(d.location.latitude)] as [number, number],
-        id: d.id
-      }))
+      points = crimeLayerPoints
     } else if (activeTab === 'aqi' && aqiData.data) {
-      points = aqiData.data.map((d: any) => ({
-        position: [d.coordinates?.longitude ?? 0, d.coordinates?.latitude ?? 0] as [number, number],
-        value: d.measurements?.[0]?.value ?? 0,
-        id: String(d.id)
-      }))
+      points = aqiLayerPoints
     }
 
     // Build and set layers
@@ -142,7 +178,7 @@ export default function BaseMap({ bbox }: BaseMapProps): JSX.Element {
     })
 
     deckRef.current.setProps({ layers })
-  }, [activeTab, trafficData.data, crimeData.data, aqiData.data, countriesGeoJSON.data])
+  }, [activeTab, aqiLayerPoints, crimeLayerPoints, countriesGeoJSON.data, trafficClusters.clusters, trafficData.data])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
 }

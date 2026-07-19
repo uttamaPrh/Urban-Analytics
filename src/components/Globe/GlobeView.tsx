@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import useAppStore from '@/store/useAppStore'
 import '@/components/Globe/GlobeView.css'
 import { CountriesGeoJSON, CountryFeature, LatLng } from '@/types'
@@ -91,6 +91,38 @@ export default function GlobeView(): JSX.Element {
   const [hovered, setHovered] = useState<string | null>(null)
   const [globeReady, setGlobeReady] = useState(false)
 
+  const visualizationData = useMemo(() => {
+    if (!countries) return null
+
+    const features: CountryFeature[] = new Array(countries.features.length)
+    const labels: CountryLabel[] = new Array(countries.features.length)
+
+    for (let index = 0; index < countries.features.length; index += 1) {
+      const sourceFeature = countries.features[index]
+      const name = getCountryName(sourceFeature)
+      const code = getCountryCode(sourceFeature)
+      const enrichedFeature: CountryFeature = {
+        ...sourceFeature,
+        properties: {
+          ...sourceFeature.properties,
+          name,
+        },
+      }
+
+      features[index] = enrichedFeature
+      labels[index] = {
+        feature: enrichedFeature,
+        name,
+        code,
+        flag: flagFromCode(code),
+        rank: Number(sourceFeature.properties.LABELRANK) || 6,
+        ...getLabelPosition(sourceFeature),
+      }
+    }
+
+    return { features, labels }
+  }, [countries])
+
   useEffect(() => {
     let mounted = true
     fetch(GEOJSON_PATH)
@@ -106,12 +138,15 @@ export default function GlobeView(): JSX.Element {
 
   useEffect(() => {
     let mounted = true
-    let Globe: any
+    let cleanup: (() => void) | null = null
     async function setup() {
       const module = await import('globe.gl')
-      Globe = module.default
       if (!mounted || !containerRef.current) return
-      const g = Globe()(containerRef.current.querySelector('.globe-canvas'))
+      const canvasElement = containerRef.current.querySelector('.globe-canvas') as HTMLElement | null
+      if (!canvasElement) return
+
+      const Globe = module.default
+      const g = new Globe(canvasElement)
         .globeImageUrl(EARTH_IMAGE)
         .bumpImageUrl(EARTH_BUMP)
         .backgroundColor('rgba(0,0,0,0)')
@@ -129,68 +164,55 @@ export default function GlobeView(): JSX.Element {
       g.pointOfView({ lat: 18, lng: 12, altitude: 2.45 }, 0)
 
       let zoomVelocity = 0
-      const canvasElement = containerRef.current.querySelector('.globe-canvas') as HTMLElement
-      
       const handleWheel = (event: WheelEvent) => {
         event.preventDefault()
         zoomVelocity = event.deltaY * 0.0008
       }
 
+      let animationFrameId = 0
       const smoothZoom = () => {
+        if (!mounted) return
         if (Math.abs(zoomVelocity) > 0.0001) {
           const pov = g.pointOfView()
           const newAltitude = Math.max(1.5, Math.min(8, pov.altitude + zoomVelocity))
           g.pointOfView({ ...pov, altitude: newAltitude }, 300)
           zoomVelocity *= 0.92
         }
+
+        animationFrameId = window.requestAnimationFrame(smoothZoom)
       }
 
       canvasElement?.addEventListener('wheel', handleWheel, { passive: false })
-      const animationId = setInterval(smoothZoom, 16)
+      animationFrameId = window.requestAnimationFrame(smoothZoom)
 
-      return () => {
+      cleanup = () => {
         canvasElement?.removeEventListener('wheel', handleWheel)
-        clearInterval(animationId)
+        window.cancelAnimationFrame(animationFrameId)
       }
     }
-    setup()
+    void setup()
     return () => {
       mounted = false
+      cleanup?.()
       if (globeRef.current && globeRef.current.dispose) globeRef.current.dispose()
+      globeRef.current = null
       setGlobeReady(false)
     }
   }, [])
 
   useEffect(() => {
-    if (!countries || !globeReady || !globeRef.current) return
+    if (!visualizationData || !globeReady || !globeRef.current) return
     const g = globeRef.current
-
-    const features: CountryFeature[] = countries.features.map((f) => ({
-      ...f,
-      properties: {
-        ...f.properties,
-        name: getCountryName(f)
-      }
-    }))
-    const labels: CountryLabel[] = features.map((feature) => {
-      const code = getCountryCode(feature)
-      return {
-        feature,
-        name: getCountryName(feature),
-        code,
-        flag: flagFromCode(code),
-        rank: Number(feature.properties.LABELRANK) || 6,
-        ...getLabelPosition(feature)
-      }
-    })
+    const { features, labels } = visualizationData
 
     g.polygonsData(features)
-      .polygonAltitude((feat: CountryFeature) => (hovered === getCountryName(feat) ? 0.035 : 0.012))
-      .polygonCapColor((feat: CountryFeature) => (hovered === getCountryName(feat) ? 'rgba(80, 190, 255, 0.32)' : 'rgba(60, 150, 255, 0.045)'))
+      .polygonAltitude((feat: CountryFeature) => (hovered === feat.properties.name ? 0.035 : 0.012))
+      .polygonCapColor((feat: CountryFeature) => (hovered === feat.properties.name ? 'rgba(80, 190, 255, 0.32)' : 'rgba(60, 150, 255, 0.045)'))
       .polygonSideColor(() => 'rgba(46, 139, 190, 0.22)')
-      .polygonStrokeColor((feat: CountryFeature) => (hovered === getCountryName(feat) ? 'rgba(255, 255, 255, 0.95)' : 'rgba(184, 226, 255, 0.48)'))
-      .onPolygonHover((feat: CountryFeature | null) => {
-        setHovered(feat ? getCountryName(feat) : null)
+      .polygonStrokeColor((feat: CountryFeature) => (hovered === feat.properties.name ? 'rgba(255, 255, 255, 0.95)' : 'rgba(184, 226, 255, 0.48)'))
+      .onPolygonHover((feat: unknown) => {
+        const hoveredFeature = feat as CountryFeature | null
+        setHovered(hoveredFeature ? getCountryName(hoveredFeature) : null)
       })
       .onPolygonClick((feat: CountryFeature) => {
         selectCountry(feat, setSelectedCountry)
@@ -201,7 +223,7 @@ export default function GlobeView(): JSX.Element {
       .htmlLng((label: CountryLabel) => label.lng)
       .htmlAltitude((label: CountryLabel) => (hovered === label.name ? 0.08 : 0.035))
       .htmlElement((label: CountryLabel) => buildCountryLabel(label, hovered === label.name, () => selectCountry(label.feature, setSelectedCountry)))
-  }, [countries, hovered, globeReady, setSelectedCountry])
+  }, [hovered, globeReady, setSelectedCountry, visualizationData])
 
   return (
     <div className="globe-container" ref={containerRef}>

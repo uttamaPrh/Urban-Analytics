@@ -81,27 +81,30 @@ function toBackendChartData(
   const latestActual = result.historical_actual_data[result.historical_actual_data.length - 1]
   const rows = new Map<number, PredictionChartPoint>()
 
-  visibleHistorical.forEach((point) => {
+  for (let index = 0; index < visibleHistorical.length; index += 1) {
+    const point = visibleHistorical[index]
     rows.set(point.year, {
       year: point.year,
       actual: point.value / scale
     })
-  })
+  }
 
   if (latestActual) {
+    const existing = rows.get(latestActual.year)
     rows.set(latestActual.year, {
-      ...rows.get(latestActual.year),
       year: latestActual.year,
+      actual: existing?.actual,
       forecast: latestActual.value / scale
     })
   }
 
-  result.predicted_future_data.forEach((point) => {
+  for (let index = 0; index < result.predicted_future_data.length; index += 1) {
+    const point = result.predicted_future_data[index]
     rows.set(point.year, {
       year: point.year,
       forecast: point.value / scale
     })
-  })
+  }
 
   return Array.from(rows.values()).sort((a, b) => a.year - b.year)
 }
@@ -115,27 +118,30 @@ function toFallbackChartData(
   const latestActual = result.historical[result.historical.length - 1]
   const rows = new Map<number, PredictionChartPoint>()
 
-  visibleHistorical.forEach((point) => {
+  for (let index = 0; index < visibleHistorical.length; index += 1) {
+    const point = visibleHistorical[index]
     rows.set(point.year, {
       year: point.year,
       actual: point.value / scale
     })
-  })
+  }
 
   if (latestActual && result.forecast.length > 0) {
+    const existing = rows.get(latestActual.year)
     rows.set(latestActual.year, {
-      ...rows.get(latestActual.year),
       year: latestActual.year,
+      actual: existing?.actual,
       forecast: latestActual.value / scale
     })
   }
 
-  result.forecast.forEach((point) => {
+  for (let index = 0; index < result.forecast.length; index += 1) {
+    const point = result.forecast[index]
     rows.set(point.year, {
       year: point.year,
       forecast: point.value / scale
     })
-  })
+  }
 
   return Array.from(rows.values()).sort((a, b) => a.year - b.year)
 }

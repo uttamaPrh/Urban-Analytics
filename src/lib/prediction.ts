@@ -11,28 +11,40 @@ type ModelFactory = (points: TimeSeriesPoint[]) => RegressionModel | null
 export function cleanTimeSeriesData(
   series: WorldBankSeries | null | undefined
 ): TimeSeriesPoint[] {
-  return (series ?? [])
-    .map((point) => ({
-      year: Number(point.date),
-      value: point.value === null ? Number.NaN : Number(point.value)
-    }))
-    .filter((point) => Number.isFinite(point.year) && Number.isFinite(point.value) && point.value > 0)
-    .sort((a, b) => a.year - b.year)
+  const points: TimeSeriesPoint[] = []
+
+  for (const point of series ?? []) {
+    const year = Number(point.date)
+    const value = point.value === null ? Number.NaN : Number(point.value)
+
+    if (Number.isFinite(year) && Number.isFinite(value) && value > 0) {
+      points.push({ year, value })
+    }
+  }
+
+  points.sort((a, b) => a.year - b.year)
+  return points
 }
 
 export function linearRegression(points: TimeSeriesPoint[]): RegressionModel | null {
   if (points.length < 2) return null
 
   const originYear = points[0].year
-  const shifted = points.map((point) => ({
-    x: point.year - originYear,
-    y: point.value
-  }))
-  const n = shifted.length
-  const sumX = shifted.reduce((sum, point) => sum + point.x, 0)
-  const sumY = shifted.reduce((sum, point) => sum + point.y, 0)
-  const sumXY = shifted.reduce((sum, point) => sum + point.x * point.y, 0)
-  const sumXX = shifted.reduce((sum, point) => sum + point.x * point.x, 0)
+  const n = points.length
+  let sumX = 0
+  let sumY = 0
+  let sumXY = 0
+  let sumXX = 0
+
+  for (const point of points) {
+    const x = point.year - originYear
+    const y = point.value
+    sumX += x
+    sumY += y
+    sumXY += x * y
+    sumXX += x * x
+  }
+
   const denominator = n * sumXX - sumX * sumX
 
   if (denominator === 0) return null
@@ -51,10 +63,16 @@ export function linearRegression(points: TimeSeriesPoint[]): RegressionModel | n
 }
 
 function logLinearRegression(points: TimeSeriesPoint[]): RegressionModel | null {
-  const logged = points.map((point) => ({
-    year: point.year,
-    value: Math.log(point.value)
-  }))
+  const logged: TimeSeriesPoint[] = new Array(points.length)
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]
+    logged[index] = {
+      year: point.year,
+      value: Math.log(point.value)
+    }
+  }
+
   const model = linearRegression(logged)
 
   if (!model) return null
@@ -78,12 +96,12 @@ function median(values: number[]): number {
 }
 
 function recentAnnualGrowth(points: TimeSeriesPoint[], years = 8): number {
-  const recent = points.slice(-years)
   const growthRates: number[] = []
+  const startIndex = Math.max(points.length - years, 0)
 
-  for (let index = 1; index < recent.length; index += 1) {
-    const previous = recent[index - 1]
-    const current = recent[index]
+  for (let index = startIndex + 1; index < points.length; index += 1) {
+    const previous = points[index - 1]
+    const current = points[index]
     if (previous.value > 0 && current.value > 0) {
       growthRates.push(Math.log(current.value / previous.value))
     }
@@ -95,7 +113,11 @@ function recentAnnualGrowth(points: TimeSeriesPoint[], years = 8): number {
 function dampedHoltLogModel(points: TimeSeriesPoint[]): RegressionModel | null {
   if (points.length < 4) return logLinearRegression(points)
 
-  const values = points.map((point) => Math.log(point.value))
+  const values: number[] = new Array(points.length)
+  for (let index = 0; index < points.length; index += 1) {
+    values[index] = Math.log(points[index].value)
+  }
+
   const latestYear = points[points.length - 1].year
   const latestActual = points[points.length - 1].value
   const initialTrend = values[1] - values[0]
@@ -187,24 +209,27 @@ function selectBestModel(points: TimeSeriesPoint[]): {
     linearRegression
   ]
 
-  const candidates = factories
-    .map((factory) => {
-      const model = factory(training)
-      if (!model) return null
-      return {
-        model,
-        rmse: evaluateModel(model, holdout).rmse ?? Number.POSITIVE_INFINITY
+  let bestCandidate:
+    | {
+        factory: ModelFactory
+        model: RegressionModel
+        rmse: number
       }
-    })
-    .filter((candidate): candidate is { model: RegressionModel; rmse: number } => candidate !== null)
-    .sort((a, b) => a.rmse - b.rmse)
+    | null = null
 
-  if (candidates.length === 0) return { model: null, holdoutYears: 0 }
+  for (const factory of factories) {
+    const model = factory(training)
+    if (!model) continue
 
-  const selectedName = candidates[0].model.name
-  const fullModel = factories
-    .map((factory) => factory(points))
-    .find((model) => model?.name === selectedName) ?? candidates[0].model
+    const rmse = evaluateModel(model, holdout).rmse ?? Number.POSITIVE_INFINITY
+    if (!bestCandidate || rmse < bestCandidate.rmse) {
+      bestCandidate = { factory, model, rmse }
+    }
+  }
+
+  if (!bestCandidate) return { model: null, holdoutYears: 0 }
+
+  const fullModel = bestCandidate.factory(points) ?? bestCandidate.model
 
   return {
     model: fullModel,
@@ -233,36 +258,41 @@ export function calculateMAE(
   actual: TimeSeriesPoint[],
   predicted: TimeSeriesPoint[]
 ): number | null {
-  const pairs = actual
-    .map((point, index) => ({ actual: point.value, predicted: predicted[index]?.value }))
-    .filter((point) => Number.isFinite(point.actual) && Number.isFinite(point.predicted))
+  let absoluteError = 0
+  let count = 0
 
-  if (pairs.length === 0) return null
+  for (let index = 0; index < actual.length; index += 1) {
+    const actualValue = actual[index].value
+    const predictedValue = predicted[index]?.value
 
-  const absoluteError = pairs.reduce(
-    (sum, point) => sum + Math.abs(point.actual - point.predicted),
-    0
-  )
+    if (!Number.isFinite(actualValue) || !Number.isFinite(predictedValue)) continue
 
-  return absoluteError / pairs.length
+    absoluteError += Math.abs(actualValue - predictedValue)
+    count += 1
+  }
+
+  return count === 0 ? null : absoluteError / count
 }
 
 export function calculateRMSE(
   actual: TimeSeriesPoint[],
   predicted: TimeSeriesPoint[]
 ): number | null {
-  const pairs = actual
-    .map((point, index) => ({ actual: point.value, predicted: predicted[index]?.value }))
-    .filter((point) => Number.isFinite(point.actual) && Number.isFinite(point.predicted))
+  let squaredError = 0
+  let count = 0
 
-  if (pairs.length === 0) return null
+  for (let index = 0; index < actual.length; index += 1) {
+    const actualValue = actual[index].value
+    const predictedValue = predicted[index]?.value
 
-  const squaredError = pairs.reduce(
-    (sum, point) => sum + Math.pow(point.actual - point.predicted, 2),
-    0
-  )
+    if (!Number.isFinite(actualValue) || !Number.isFinite(predictedValue)) continue
 
-  return Math.sqrt(squaredError / pairs.length)
+    const error = actualValue - predictedValue
+    squaredError += error * error
+    count += 1
+  }
+
+  return count === 0 ? null : Math.sqrt(squaredError / count)
 }
 
 export function buildPrediction(

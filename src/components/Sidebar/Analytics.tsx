@@ -57,8 +57,14 @@ function formatCurrency(value: number | null | undefined): string {
 }
 
 function latestValue(series: WorldBankSeries | null | undefined): number | null {
-  const point = series?.find((item) => item.value !== null);
-  return point ? Number(point.value) : null;
+  if (!series || series.length === 0) return null
+
+  for (let index = series.length - 1; index >= 0; index -= 1) {
+    const item = series[index]
+    if (item.value !== null) return Number(item.value)
+  }
+
+  return null
 }
 
 function toChartData(
@@ -66,12 +72,20 @@ function toChartData(
   years = 12,
   scale = 1
 ): Array<{ year: string; value: number }> {
-  return (series ?? [])
-    .filter((point) => point.value !== null)
-    .map((point) => ({ year: point.date, value: Number(point.value) / scale }))
-    .filter((point) => Number.isFinite(point.value))
-    .sort((a, b) => Number(a.year) - Number(b.year))
-    .slice(-years);
+  const rows: Array<{ year: string; value: number }> = []
+
+  for (let index = 0; index < (series?.length ?? 0); index += 1) {
+    const point = series![index]
+    if (point.value === null) continue
+
+    const value = Number(point.value) / scale
+    if (!Number.isFinite(value)) continue
+
+    rows.push({ year: point.date, value })
+  }
+
+  rows.sort((a, b) => Number(a.year) - Number(b.year))
+  return rows.slice(-years)
 }
 
 function KpiCard({
@@ -138,10 +152,11 @@ function IndicatorBars({
     latestValue: number | null;
   }>;
 }) {
-  const max = Math.max(
-    ...indicators.map((item) => item.latestValue ?? 0),
-    1
-  );
+  let max = 1
+  for (let index = 0; index < indicators.length; index += 1) {
+    const value = indicators[index].latestValue ?? 0
+    if (value > max) max = value
+  }
 
   return (
     <div className="space-y-5">

@@ -1,77 +1,194 @@
-import { LatLng, Cluster } from '@/types'
+import { Cluster, LatLng } from '@/types'
+
+const EARTH_RADIUS_KM = 6371
+const DEG_TO_RAD = Math.PI / 180
+
+function toRadians(value: number): number {
+  return value * DEG_TO_RAD
+}
 
 // Haversine distance (km)
 function haversine(a: LatLng, b: LatLng): number {
-  const R = 6371 // km
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const dLat = toRad(b.lat - a.lat)
-  const dLon = toRad(b.lng - a.lng)
-  const lat1 = toRad(a.lat)
-  const lat2 = toRad(b.lat)
+  const dLat = toRadians(b.lat - a.lat)
+  const dLon = toRadians(b.lng - a.lng)
+  const lat1 = toRadians(a.lat)
+  const lat2 = toRadians(b.lat)
 
   const sinDLat = Math.sin(dLat / 2)
   const sinDLon = Math.sin(dLon / 2)
-  const aa =
-    sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon
-  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa))
-  return R * c
+  const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon
+  return EARTH_RADIUS_KM * (2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)))
+}
+
+function regionQuery(points: LatLng[], idx: number, epsilonKm: number): number[] {
+  const neighbors: number[] = []
+  const origin = points[idx]
+
+  for (let index = 0; index < points.length; index += 1) {
+    if (haversine(origin, points[index]) <= epsilonKm) {
+      neighbors.push(index)
+    }
+  }
+
+  return neighbors
+}
+
+function buildCluster(points: LatLng[], memberIndices: number[], cid: number): Cluster {
+  const clusterPoints = new Array<LatLng>(memberIndices.length)
+  let latSum = 0
+  let lngSum = 0
+  let south = Number.POSITIVE_INFINITY
+  let west = Number.POSITIVE_INFINITY
+  let north = Number.NEGATIVE_INFINITY
+  let east = Number.NEGATIVE_INFINITY
+
+  for (let index = 0; index < memberIndices.length; index += 1) {
+    const point = points[memberIndices[index]]
+    clusterPoints[index] = point
+    latSum += point.lat
+    lngSum += point.lng
+    if (point.lat < south) south = point.lat
+    if (point.lng < west) west = point.lng
+    if (point.lat > north) north = point.lat
+    if (point.lng > east) east = point.lng
+  }
+
+  return {
+    id: cid,
+    centroid: {
+      lat: latSum / clusterPoints.length,
+      lng: lngSum / clusterPoints.length,
+    },
+    points: clusterPoints,
+    count: clusterPoints.length,
+    bounds: { south, west, north, east },
+  }
 }
 
 export function dbscan(points: LatLng[], epsilon: number, minPoints: number): Cluster[] {
-  const eps = epsilon // in km
+  const eps = epsilon
   const visited = new Set<number>()
   const assigned = new Array<number | null>(points.length).fill(null)
   const clusters: Cluster[] = []
 
-  function regionQuery(idx: number): number[] {
-    const res: number[] = []
-    for (let i = 0; i < points.length; i++) {
-      if (haversine(points[idx], points[i]) <= eps) res.push(i)
-    }
-    return res
-  }
-
   let cid = 0
-  for (let i = 0; i < points.length; i++) {
-    if (visited.has(i)) continue
-    visited.add(i)
-    const neighbors = regionQuery(i)
+  for (let index = 0; index < points.length; index += 1) {
+    if (visited.has(index)) continue
+    visited.add(index)
+
+    const neighbors = regionQuery(points, index, eps)
     if (neighbors.length < minPoints) {
-      assigned[i] = -1 // noise
+      assigned[index] = -1
       continue
     }
-    // new cluster
-    const queue = [...neighbors]
-    assigned[i] = cid
-    const members = new Set<number>([i])
-    while (queue.length) {
-      const j = queue.shift() as number
-      if (!visited.has(j)) {
-        visited.add(j)
-        const jNeighbors = regionQuery(j)
-        if (jNeighbors.length >= minPoints) queue.push(...jNeighbors.filter(n => !visited.has(n)))
+
+    const queue = neighbors.slice()
+    const members: number[] = [index]
+    assigned[index] = cid
+
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const neighborIndex = queue[queueIndex]
+      if (!visited.has(neighborIndex)) {
+        visited.add(neighborIndex)
+        const neighborNeighbors = regionQuery(points, neighborIndex, eps)
+        if (neighborNeighbors.length >= minPoints) {
+          for (let i = 0; i < neighborNeighbors.length; i += 1) {
+            const candidate = neighborNeighbors[i]
+            if (!visited.has(candidate)) {
+              queue.push(candidate)
+            }
+          }
+        }
       }
-      if (assigned[j] === null || assigned[j] === -1) {
-        assigned[j] = cid
-        members.add(j)
+
+      if (assigned[neighborIndex] === null || assigned[neighborIndex] === -1) {
+        assigned[neighborIndex] = cid
+        members.push(neighborIndex)
       }
     }
 
-    // compute centroid and bounds
-    const pts = Array.from(members).map(i => points[i])
-    const latSum = pts.reduce((s, p) => s + p.lat, 0)
-    const lngSum = pts.reduce((s, p) => s + p.lng, 0)
-    const centroid = { lat: latSum / pts.length, lng: lngSum / pts.length }
-    const lats = pts.map(p => p.lat)
-    const lngs = pts.map(p => p.lng)
-    const bounds = {
-      south: Math.min(...lats),
-      west: Math.min(...lngs),
-      north: Math.max(...lats),
-      east: Math.max(...lngs)
-    }
-    clusters.push({ id: cid, centroid, points: pts, count: pts.length, bounds })
+    clusters.push(buildCluster(points, members, cid))
     cid += 1
+  }
+
+  return clusters
+}
+
+function yieldToMainThread(): Promise<void> {
+  const idleCallback = (globalThis as typeof globalThis & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+  }).requestIdleCallback
+
+  if (typeof idleCallback === 'function') {
+    return new Promise((resolve) => {
+      idleCallback(() => resolve(), { timeout: 16 })
+    })
+  }
+
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0)
+  })
+}
+
+export async function dbscanAsync(points: LatLng[], epsilon: number, minPoints: number): Promise<Cluster[]> {
+  const eps = epsilon
+  const visited = new Set<number>()
+  const assigned = new Array<number | null>(points.length).fill(null)
+  const clusters: Cluster[] = []
+
+  let cid = 0
+  let workCounter = 0
+
+  const maybeYield = async () => {
+    workCounter += 1
+    if (workCounter >= 8) {
+      workCounter = 0
+      await yieldToMainThread()
+    }
+  }
+
+  for (let index = 0; index < points.length; index += 1) {
+    if (visited.has(index)) continue
+    visited.add(index)
+
+    const neighbors = regionQuery(points, index, eps)
+    await maybeYield()
+
+    if (neighbors.length < minPoints) {
+      assigned[index] = -1
+      continue
+    }
+
+    const queue = neighbors.slice()
+    const members: number[] = [index]
+    assigned[index] = cid
+
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const neighborIndex = queue[queueIndex]
+      if (!visited.has(neighborIndex)) {
+        visited.add(neighborIndex)
+        const neighborNeighbors = regionQuery(points, neighborIndex, eps)
+        await maybeYield()
+
+        if (neighborNeighbors.length >= minPoints) {
+          for (let i = 0; i < neighborNeighbors.length; i += 1) {
+            const candidate = neighborNeighbors[i]
+            if (!visited.has(candidate)) {
+              queue.push(candidate)
+            }
+          }
+        }
+      }
+
+      if (assigned[neighborIndex] === null || assigned[neighborIndex] === -1) {
+        assigned[neighborIndex] = cid
+        members.push(neighborIndex)
+      }
+    }
+
+    clusters.push(buildCluster(points, members, cid))
+    cid += 1
+    await maybeYield()
   }
 
   return clusters

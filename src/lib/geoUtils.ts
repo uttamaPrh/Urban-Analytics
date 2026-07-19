@@ -1,16 +1,36 @@
 import { LatLng, BBox } from '@/types'
 
 export function bboxFromCoordinates(coords: number[][]): BBox {
-  const lats = coords.map(c => c[1])
-  const lngs = coords.map(c => c[0])
-  return [Math.min(...lats), Math.min(...lngs), Math.max(...lats), Math.max(...lngs)]
+  let south = Number.POSITIVE_INFINITY
+  let west = Number.POSITIVE_INFINITY
+  let north = Number.NEGATIVE_INFINITY
+  let east = Number.NEGATIVE_INFINITY
+
+  for (let index = 0; index < coords.length; index += 1) {
+    const coordinate = coords[index]
+    const lng = coordinate[0]
+    const lat = coordinate[1]
+    if (lat < south) south = lat
+    if (lng < west) west = lng
+    if (lat > north) north = lat
+    if (lng > east) east = lng
+  }
+
+  return [south, west, north, east]
 }
 
 export function centroidOfCoords(coords: number[][]): LatLng {
-  const lats = coords.map(c => c[1])
-  const lngs = coords.map(c => c[0])
-  const lat = lats.reduce((s, v) => s + v, 0) / lats.length
-  const lng = lngs.reduce((s, v) => s + v, 0) / lngs.length
+  let latSum = 0
+  let lngSum = 0
+
+  for (let index = 0; index < coords.length; index += 1) {
+    const coordinate = coords[index]
+    lngSum += coordinate[0]
+    latSum += coordinate[1]
+  }
+
+  const lat = latSum / coords.length
+  const lng = lngSum / coords.length
   return { lat, lng }
 }
 
