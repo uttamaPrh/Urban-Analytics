@@ -1,6 +1,7 @@
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
+const { findAvailablePort } = require('./port-utils.cjs')
 
 const processes = []
 
@@ -49,6 +50,27 @@ function run(name, command, args) {
   return child
 }
 
+async function main() {
+  const backendPort = await findAvailablePort(process.env.BACKEND_PORT, {
+    host: '127.0.0.1'
+  })
+
+  process.env.BACKEND_PORT = String(backendPort)
+  process.env.VITE_PREDICTION_API_URL = `http://127.0.0.1:${backendPort}`
+
+  run('backend', 'python', [
+    '-m',
+    'uvicorn',
+    'backend.app:app',
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(backendPort)
+  ])
+
+  run('frontend', 'vite', ['--host', '127.0.0.1'])
+}
+
 function shutdown() {
   for (const child of processes) {
     if (!child.killed) child.kill()
@@ -65,14 +87,8 @@ process.on('SIGTERM', () => {
   process.exit(0)
 })
 
-run('backend', 'python', [
-  '-m',
-  'uvicorn',
-  'backend.app:app',
-  '--host',
-  '127.0.0.1',
-  '--port',
-  process.env.BACKEND_PORT || '8000'
-])
-
-run('frontend', 'vite', ['--host', '127.0.0.1'])
+main().catch((error) => {
+  console.error('Failed to start dev processes')
+  console.error(error.message)
+  process.exit(1)
+})

@@ -3,17 +3,7 @@
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-
-const UVICORN_ARGS = [
-  "-m",
-  "uvicorn",
-  "backend.app:app",
-  "--reload",
-  "--host",
-  "127.0.0.1",
-  "--port",
-  process.env.BACKEND_PORT || "8000",
-];
+const { findAvailablePort } = require("./port-utils.cjs");
 
 function loadLocalEnv() {
   for (const fileName of [".env.local", ".env"]) {
@@ -67,10 +57,27 @@ function resolvePythonCommand() {
   return { command: "python", args: [] };
 }
 
-function startBackend() {
+async function startBackend() {
   loadLocalEnv();
   const { command, args } = resolvePythonCommand();
-  const child = spawn(command, [...args, ...UVICORN_ARGS], {
+
+  const port = await findAvailablePort(process.env.BACKEND_PORT, {
+    host: "127.0.0.1",
+  });
+
+  process.env.BACKEND_PORT = String(port);
+
+  const child = spawn(command, [
+    ...args,
+    "-m",
+    "uvicorn",
+    "backend.app:app",
+    "--reload",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+  ], {
     stdio: "inherit",
     shell: process.platform === "win32",
   });
@@ -93,4 +100,8 @@ function startBackend() {
   });
 }
 
-startBackend();
+startBackend().catch((error) => {
+  console.error("Failed to start backend.");
+  console.error(error.message);
+  process.exit(1);
+});
