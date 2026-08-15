@@ -616,7 +616,3 @@ Fix:
 - Large visualization libraries increase production bundle size.
 
 ---
-
-## License
-
-MIT
